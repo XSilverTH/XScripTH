@@ -1,3 +1,6 @@
 <Solution>
+  <Project Path="XScripTH.Contracts/XScripTH.Contracts.csproj" />
+  <Project Path="XScripTH.Core/XScripTH.Core.csproj" />
+  <Project Path="XScripTH.Engine/XScripTH.Engine.csproj" />
   <Project Path="XScripTH/XScripTH.csproj" />
 </Solution>
