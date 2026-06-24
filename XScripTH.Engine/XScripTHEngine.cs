@@ -1,3 +1,5 @@
+using System.Reflection;
+using XScripTH.Contracts.Attributes;
 using XScripTH.Contracts.Enums;
 using XScripTH.Contracts.Interfaces;
 using XScripTH.Contracts.Models;
@@ -45,15 +47,34 @@ public sealed class XScripTHEngine : ICommandExecutor
 
         var command = await invocation.CommandTask.WaitAsync(cancellationToken).ConfigureAwait(false)
             ?? throw new InvalidOperationException("Command invocation returned null command.");
+        var commandTypes = command.GetType().GetCustomAttribute<CommandTypesAttribute>();
+        var inputs = commandTypes?.Inputs;
         var values = new List<object?>();
 
-        foreach (var argument in invocation.Arguments)
+        for (var index = 0; index < invocation.Arguments.Count; index++)
         {
             cancellationToken.ThrowIfCancellationRequested();
+            var argument = invocation.Arguments[index];
+            var expectedInputType = inputs is not null && index < inputs.Length ? inputs[index] : null;
             switch (argument)
             {
                 case CommandValueArgument valueArgument:
                     values.Add(valueArgument.Value);
+                    break;
+
+                case CommandVariableArgument variableArgument:
+                    if (expectedInputType?.IsAssignableFrom(typeof(CommandVariableArgument)) == true)
+                    {
+                        values.Add(variableArgument);
+                        break;
+                    }
+
+                    if (!variableArgument.VariableStore.TryGet(variableArgument.Name, out var value))
+                    {
+                        throw new InvalidOperationException($"Variable '${variableArgument.Name}' has not been assigned.");
+                    }
+
+                    values.Add(value);
                     break;
 
                 case CommandInvocationArgument invocationArgument:

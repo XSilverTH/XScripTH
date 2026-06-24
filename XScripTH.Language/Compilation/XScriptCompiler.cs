@@ -19,6 +19,7 @@ public sealed class XScriptCompiler
     private readonly ICommandTypeChecker _typeChecker;
     private readonly XScriptParser _parser;
     private readonly ICommandExecutor? _executor;
+    private readonly IVariableStore _variableStore;
 
     public XScriptCompiler(
         ICommandRegistry commandRegistry,
@@ -32,6 +33,9 @@ public sealed class XScriptCompiler
         _typeChecker = typeChecker ?? CommandTypeChecker.Default;
         _parser = parser ?? new XScriptParser();
         _executor = executor;
+        _variableStore = commandRegistry is CommandRegistry registry
+            ? registry.GetRequiredService<IVariableStore>()
+            : new VariableStore();
     }
 
     public async Task<IReadOnlyList<Task<ICommandInvocation>>> CompileAsync(
@@ -49,10 +53,11 @@ public sealed class XScriptCompiler
     {
         ArgumentNullException.ThrowIfNull(ast);
 
+        var context = new CompilationContext();
         var lowered = new List<(ICommandInvocation Invocation, XScriptCommandTerminator Terminator)>();
         foreach (var cmdAst in ast.Commands)
         {
-            var loweredCommand = await LowerCommandAsync(cmdAst, cancellationToken).ConfigureAwait(false);
+            var loweredCommand = await LowerCommandAsync(cmdAst, context, cancellationToken).ConfigureAwait(false);
             if (loweredCommand.RuntimeInvocation is not null)
             {
                 lowered.Add((loweredCommand.RuntimeInvocation, cmdAst.Terminator));
@@ -88,6 +93,7 @@ public sealed class XScriptCompiler
 
     private async Task<LoweredCommand> LowerCommandAsync(
         XScriptCommandAst commandAst,
+        ICompilationContext context,
         CancellationToken cancellationToken)
     {
         if (!_commandRegistry.TryCreate(commandAst.Name, out var command) || command == null)
@@ -95,68 +101,100 @@ public sealed class XScriptCompiler
             throw new XScriptCommandResolutionException(commandAst.Name);
         }
 
-        var isCompileTime = IsCompileTime(command);
-        var arguments = new List<ICommandArgument>();
-        foreach (var argAst in commandAst.Arguments)
+        var phase = command as ICompileTimePhase;
+        var commandTypes = command.GetType().GetCustomAttribute<CommandTypesAttribute>();
+        var emitsRuntimeInvocation = command.GetType().GetCustomAttribute<NoRuntimeInvocationAttribute>() is null;
+        var inputs = commandTypes?.Inputs;
+        var arguments = new List<ICommandArgument>(commandAst.Arguments.Count);
+        for (var index = 0; index < commandAst.Arguments.Count; index++)
         {
-            switch (argAst)
-            {
-                case XScriptLiteralArgumentAst literalArg:
-                    arguments.Add(new CommandValueArgument(literalArg.Value));
-                    break;
-                case XScriptCommandArgumentAst commandArg:
-                    var nested = await LowerCommandAsync(commandArg.Command, cancellationToken).ConfigureAwait(false);
-                    if (nested.CompileTimeOutput is not null)
-                    {
-                        if (nested.CompileTimeOutput.Status != CommandStatus.Ok ||
-                            nested.CompileTimeOutput.Values is not { Count: 1 })
-                        {
-                            throw new InvalidOperationException($"Compile-time command '{nested.Name}' used as an argument must complete successfully with exactly one output value.");
-                        }
-
-                        arguments.Add(new CommandValueArgument(nested.CompileTimeOutput.Values[0]));
-                    }
-                    else if (isCompileTime)
-                    {
-                        throw new InvalidOperationException($"Compile-time command '{commandAst.Name}' cannot use runtime command argument '{commandArg.Command.Name}'.");
-                    }
-                    else
-                    {
-                        arguments.Add(new CommandInvocationArgument(nested.RuntimeInvocation!));
-                    }
-                    break;
-                default:
-                    throw new InvalidOperationException($"Unsupported AST argument type '{argAst?.GetType().FullName}'.");
-            }
+            var expectedInputType = inputs is not null && index < inputs.Length ? inputs[index] : null;
+            arguments.Add(await LowerArgumentAsync(
+                commandAst.Arguments[index],
+                commandAst.Name,
+                phase,
+                expectedInputType,
+                context,
+                cancellationToken).ConfigureAwait(false));
         }
 
         var invocation = new CommandInvocation(Task.FromResult(command), arguments);
-        if (!isCompileTime)
+        if (phase is null)
         {
             return new LoweredCommand(invocation, null, commandAst.Name);
         }
 
         await _typeChecker.EnsureInvocationValidAsync(invocation, cancellationToken).ConfigureAwait(false);
 
-        var values = invocation.Arguments
-            .Cast<CommandValueArgument>()
-            .Select(argument => argument.Value)
-            .ToList();
-        var outputTask = command.Execute(new CommandInput(values))
-            ?? throw new InvalidOperationException($"Command '{command.GetType().FullName}' returned null output task.");
-        var output = await outputTask.WaitAsync(cancellationToken).ConfigureAwait(false)
-            ?? throw new InvalidOperationException($"Command '{command.GetType().FullName}' returned null output.");
+        if (!emitsRuntimeInvocation)
+        {
+            foreach (var argument in invocation.Arguments)
+            {
+                if (argument is not CommandValueArgument)
+                {
+                    throw new InvalidOperationException($"Compile-time command '{commandAst.Name}' cannot use dynamic argument '{argument.GetType().FullName}'.");
+                }
+            }
+        }
 
+        var output = await phase.ExecuteCompileTimeAsync(arguments, context, cancellationToken).ConfigureAwait(false)
+            ?? throw new InvalidOperationException($"Compile-time command '{commandAst.Name}' returned null output.");
         if (output.Status == CommandStatus.Error)
         {
             throw new InvalidOperationException($"Compile-time command '{commandAst.Name}' returned an error status.");
         }
 
-        return new LoweredCommand(null, output, commandAst.Name);
+        return emitsRuntimeInvocation
+            ? new LoweredCommand(invocation, null, commandAst.Name)
+            : new LoweredCommand(null, output, commandAst.Name);
     }
 
-    private static bool IsCompileTime(ICommand command) =>
-        command.GetType().GetCustomAttribute<CompileTimeAttribute>() is not null;
+    private async Task<ICommandArgument> LowerArgumentAsync(
+        XScriptArgumentAst argumentAst,
+        string parentCommandName,
+        ICompileTimePhase? parentPhase,
+        Type? expectedInputType,
+        ICompilationContext context,
+        CancellationToken cancellationToken)
+    {
+        switch (argumentAst)
+        {
+            case XScriptLiteralArgumentAst literalArg:
+                return new CommandValueArgument(literalArg.Value);
+
+            case XScriptVariableArgumentAst variableArg:
+                if (context.Symbols.TryGetVariableType(variableArg.Name, out var variableType))
+                {
+                    return new CommandVariableArgument(variableArg.Name, variableType!, _variableStore);
+                }
+
+                if (expectedInputType?.IsAssignableFrom(typeof(CommandVariableArgument)) == true)
+                {
+                    return new CommandVariableArgument(variableArg.Name, typeof(object), _variableStore);
+                }
+
+                throw new XScriptVariableResolutionException(variableArg.Name);
+
+            case XScriptCommandArgumentAst commandArg:
+                var nested = await LowerCommandAsync(commandArg.Command, context, cancellationToken).ConfigureAwait(false);
+                if (nested.CompileTimeOutput is not null)
+                {
+                    if (nested.CompileTimeOutput.Status != CommandStatus.Ok ||
+                        nested.CompileTimeOutput.Values is not { Count: 1 })
+                    {
+                        throw new InvalidOperationException($"Compile-time command '{nested.Name}' used as an argument must complete successfully with exactly one output value.");
+                    }
+
+                    return new CommandValueArgument(nested.CompileTimeOutput.Values[0]);
+                }
+
+                return new CommandInvocationArgument(nested.RuntimeInvocation!);
+
+            default:
+                throw new InvalidOperationException($"Unsupported AST argument type '{argumentAst?.GetType().FullName}'.");
+        }
+    }
+
 
     private sealed record LoweredCommand(
         ICommandInvocation? RuntimeInvocation,

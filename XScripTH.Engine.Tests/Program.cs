@@ -10,7 +10,9 @@ var tests = new (string Name, Func<Task> Run)[]
     ("executes top-level commands independently", ExecutesTopLevelCommandsIndependently),
     ("supports recursive nested command inputs", SupportsRecursiveNestedCommandInputs),
     ("bubbles nested error output without executing parent", BubblesNestedErrorOutputWithoutExecutingParent),
-    ("runtime executes valid direct command inputs", RuntimeExecutesValidDirectCommandInputs)
+    ("runtime executes valid direct command inputs", RuntimeExecutesValidDirectCommandInputs),
+    ("runtime resolves variable command arguments", RuntimeResolvesVariableCommandArguments),
+    ("runtime rejects missing variable command arguments", RuntimeRejectsMissingVariableCommandArguments)
 };
 
 foreach (var test in tests)
@@ -86,6 +88,34 @@ static async Task RuntimeExecutesValidDirectCommandInputs()
     AssertEqual(5, SingleValue<int>(result));
 }
 
+static async Task RuntimeResolvesVariableCommandArguments()
+{
+    var store = new VariableStore();
+    store.Set("message", "hello");
+    var invocation = Invoke(new StringLengthCommand(), new CommandVariableArgument("message", typeof(string), store));
+
+    var result = await new XScripTHEngine().ExecuteAsync(Program(invocation));
+
+    AssertEqual(CommandStatus.Ok, result.Status);
+    AssertEqual(5, SingleValue<int>(result));
+}
+
+static async Task RuntimeRejectsMissingVariableCommandArguments()
+{
+    var store = new VariableStore();
+    var invocation = Invoke(new StringLengthCommand(), new CommandVariableArgument("message", typeof(string), store));
+
+    var exception = await AssertThrowsAsync<InvalidOperationException>(async () =>
+    {
+        await new XScripTHEngine().ExecuteAsync(Program(invocation));
+    });
+
+    if (!exception.Message.Contains("$message"))
+    {
+        throw new InvalidOperationException($"Expected exception message containing '$message', but got '{exception.Message}'.");
+    }
+}
+
 static List<Task<ICommandInvocation>> Program(params ICommandInvocation[] invocations) => invocations.Select(Task.FromResult).ToList();
 
 static CommandValueArgument Value(object? value) => new(value);
@@ -110,6 +140,25 @@ static void AssertEqual<T>(T expected, T actual)
     {
         throw new InvalidOperationException($"Expected {expected}, got {actual}.");
     }
+}
+
+static async Task<TException> AssertThrowsAsync<TException>(Func<Task> action)
+    where TException : Exception
+{
+    try
+    {
+        await action();
+    }
+    catch (TException exception)
+    {
+        return exception;
+    }
+    catch (Exception ex)
+    {
+        throw new InvalidOperationException($"Expected exception {typeof(TException).FullName}, but caught {ex.GetType().FullName}: {ex.Message}");
+    }
+
+    throw new InvalidOperationException($"Expected exception {typeof(TException).FullName}.");
 }
 
 [CommandTypes([], [typeof(string)])]

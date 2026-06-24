@@ -4,6 +4,7 @@ using System.Linq;
 using System.Reflection;
 using XScripTH.Contracts.Attributes;
 using XScripTH.Contracts.Interfaces;
+using XScripTH.Contracts.Models;
 
 namespace XScripTH.Language;
 
@@ -14,6 +15,9 @@ public sealed class CommandRegistry : ICommandRegistry, ICommandRegistrar
 
     public CommandRegistry()
     {
+        var variableStore = new VariableStore();
+        RegisterService(typeof(VariableStore), variableStore);
+        RegisterService(typeof(IVariableStore), variableStore);
         RegisterService(typeof(CommandRegistry), this);
         RegisterService(typeof(ICommandRegistry), this);
         RegisterService(typeof(ICommandRegistrar), this);
@@ -60,6 +64,28 @@ public sealed class CommandRegistry : ICommandRegistry, ICommandRegistrar
         }
 
         _services[serviceType] = service;
+    }
+
+    public bool TryGetService<TService>(out TService? service) where TService : class
+    {
+        if (_services.TryGetValue(typeof(TService), out var value) && value is TService typedValue)
+        {
+            service = typedValue;
+            return true;
+        }
+
+        service = null;
+        return false;
+    }
+
+    public TService GetRequiredService<TService>() where TService : class
+    {
+        if (TryGetService<TService>(out var service))
+        {
+            return service!;
+        }
+
+        throw new InvalidOperationException($"A service of type '{typeof(TService).FullName}' has not been registered.");
     }
 
     public void RegisterAssembly(Assembly assembly)

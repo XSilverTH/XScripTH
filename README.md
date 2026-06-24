@@ -8,7 +8,7 @@ A simple, strongly-typed, command-based scripting engine for .NET.
 
 1. **Parser**: Lexes and parses script text into an Abstract Syntax Tree (AST).
 2. **Registry**: Discovers command definitions in loaded assemblies via the `[Command]` attribute.
-3. **Compiler**: Lowers the AST into command invocations and runs a static type check before execution.
+3. **Compiler**: Lowers the AST into command invocations, runs compile-time phases via `ICompileTimePhase`, omits phases marked `[NoRuntimeInvocation]`, and runs a static type check before execution.
 4. **Type Checker**: Statically validates that argument types (both literals and nested command outputs) match the expected input types declared on each command.
 5. **Engine**: Executes command invocations sequentially. Supports synchronous (`;`) and asynchronous/fire-and-forget (`;;`) execution pipelines.
 
@@ -45,6 +45,13 @@ length text; ;
 
 // Nested command among other literal arguments
 surround "[", text;, "]";
+```
+
+### Variables
+Declare variables with `var $name, value;` and pass them to later commands with `$name`.
+```
+var $message, "Hello";
+print $message;
 ```
 
 ---

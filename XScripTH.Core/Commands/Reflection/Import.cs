@@ -7,8 +7,8 @@ namespace XScripTH.Core.Commands.Reflection;
 
 [Command("import")]
 [CommandTypes([typeof(string)], [])]
-[CompileTime]
-public sealed class Import : ICommand
+[NoRuntimeInvocation]
+public sealed class Import : ICommand, ICompileTimePhase
 {
     private readonly ICommandRegistrar _registrar;
 
@@ -16,6 +16,21 @@ public sealed class Import : ICommand
     {
         ArgumentNullException.ThrowIfNull(registrar);
         _registrar = registrar;
+    }
+
+
+    public Task<ICommandOutput> ExecuteCompileTimeAsync(
+        IReadOnlyList<ICommandArgument> arguments,
+        ICompilationContext context,
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(arguments);
+        ArgumentNullException.ThrowIfNull(context);
+
+        var rawPath = arguments is [CommandValueArgument { Value: string value }]
+            ? value
+            : null;
+        return string.IsNullOrWhiteSpace(rawPath) ? throw new ArgumentException("Import path must be a non-empty string.", nameof(arguments)) : Execute(new CommandInput([rawPath]));
     }
 
     public Task<ICommandOutput> Execute(ICommandIo input)

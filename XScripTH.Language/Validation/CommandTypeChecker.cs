@@ -170,6 +170,22 @@ public sealed class CommandTypeChecker : ICommandTypeChecker
                     }
                     break;
 
+                case CommandVariableArgument variableArgument:
+                    if (expectedType.IsAssignableFrom(typeof(CommandVariableArgument)))
+                    {
+                        break;
+                    }
+
+                    if (!MatchesExpectedOutputType(variableArgument.VariableType, expectedType))
+                    {
+                        errors.Add(new CommandTypeCheckError(
+                            currentPath,
+                            expectedType,
+                            variableArgument.VariableType,
+                            $"Input {FormatPath(currentPath)} expected {FormatType(expectedType)}, but received {FormatType(variableArgument.VariableType)}."));
+                    }
+                    break;
+
                 case CommandInvocationArgument invocationArgument:
                     var nestedValidation = await ValidateInvocationInternalAsync(
                         invocationArgument.Invocation,
@@ -242,6 +258,7 @@ public sealed class CommandTypeChecker : ICommandTypeChecker
     private static Type? GetArgumentActualType(ICommandArgument argument) => argument switch
     {
         CommandValueArgument valueArgument => valueArgument.Value?.GetType(),
+        CommandVariableArgument variableArgument => variableArgument.VariableType,
         CommandInvocationArgument => null,
         _ => argument.GetType()
     };

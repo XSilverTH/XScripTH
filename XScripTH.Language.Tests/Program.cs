@@ -4,9 +4,11 @@ using System.Linq;
 using System.Reflection;
 using System.Threading.Tasks;
 using XScripTH.Contracts.Attributes;
+using XScripTH.Contracts.Enums;
 using XScripTH.Contracts.Interfaces;
 using XScripTH.Contracts.Models;
 using XScripTH.Core.Commands.Reflection;
+using XScripTH.Core.Commands.Variables;
 using XScripTH.Engine;
 using XScripTH.Language;
 using XScripTH.Language.Ast;
@@ -28,7 +30,11 @@ var tests = new (string Name, Func<Task> Run)[]
     ("unknown command fails during compile", UnknownCommandFailsDuringCompile),
     ("compile-time command is executed during compile and omitted at runtime", CompileTimeCommandExecutesDuringCompileAndIsOmittedAtRuntime),
     ("registry injects command registrar into constructors", RegistryInjectsCommandRegistrarIntoConstructors),
-    ("import command registers commands before later lines compile", ImportCommandRegistersCommandsBeforeLaterLinesCompile)
+    ("import command registers commands before later lines compile", ImportCommandRegistersCommandsBeforeLaterLinesCompile),
+    ("variable literal assignment resolves at runtime", VariableLiteralAssignmentResolvesAtRuntime),
+    ("variable nested assignment infers command output", VariableNestedAssignmentInfersCommandOutput),
+    ("variable type mismatch fails during compile", VariableTypeMismatchFailsDuringCompile),
+    ("unresolved variable fails during compile", UnresolvedVariableFailsDuringCompile)
 };
 
 foreach (var test in tests)
@@ -257,6 +263,65 @@ static async Task ImportCommandRegistersCommandsBeforeLaterLinesCompile()
     AssertEqual("from import", (string)outputs[0].Values![0]!);
 }
 
+static async Task VariableLiteralAssignmentResolvesAtRuntime()
+{
+    CommandCounts.Reset();
+    var registry = CommandRegistry.FromAssemblies(typeof(TextCommand).Assembly, typeof(Var).Assembly);
+    var compiler = new XScriptCompiler(registry);
+    var invocationTasks = await compiler.CompileAsync("var $message, \"hello\"; length $message;");
+    var engine = new XScripTHEngine();
+    var outputs = await engine.ExecuteAllAsync(invocationTasks);
+
+    AssertEqual(2, outputs.Count);
+    AssertEqual(CommandStatus.Ok, outputs[0].Status);
+    AssertEqual(5, (int)outputs[1].Values![0]!);
+}
+
+static async Task VariableNestedAssignmentInfersCommandOutput()
+{
+    CommandCounts.Reset();
+    var registry = CommandRegistry.FromAssemblies(typeof(TextCommand).Assembly, typeof(Var).Assembly);
+    var compiler = new XScriptCompiler(registry);
+    var invocationTasks = await compiler.CompileAsync("var $message, text; length $message;");
+    var engine = new XScripTHEngine();
+    var outputs = await engine.ExecuteAllAsync(invocationTasks);
+
+    AssertEqual(2, outputs.Count);
+    AssertEqual(5, (int)outputs[1].Values![0]!);
+    AssertEqual(1, CommandCounts.TextCount);
+    AssertEqual(1, CommandCounts.LengthCount);
+}
+
+static async Task VariableTypeMismatchFailsDuringCompile()
+{
+    var registry = CommandRegistry.FromAssemblies(typeof(TextCommand).Assembly, typeof(Var).Assembly);
+    var compiler = new XScriptCompiler(registry);
+
+    var exception = await AssertThrowsAsync<CommandTypeCheckException>(async () =>
+    {
+        await compiler.CompileAsync("var $answer, 42; length $answer;");
+    });
+
+    AssertEqual(1, exception.Errors.Count);
+    var error = exception.Errors[0];
+    AssertPath([0], error.Path);
+    AssertEqual(typeof(string), error.ExpectedType);
+    AssertEqual(typeof(int), error.ActualType);
+}
+
+static async Task UnresolvedVariableFailsDuringCompile()
+{
+    var registry = CommandRegistry.FromAssemblies(typeof(TextCommand).Assembly, typeof(Var).Assembly);
+    var compiler = new XScriptCompiler(registry);
+
+    var exception = await AssertThrowsAsync<XScriptVariableResolutionException>(async () =>
+    {
+        await compiler.CompileAsync("length $missing;");
+    });
+
+    AssertEqual("missing", exception.VariableName);
+}
+
 static List<Task<ICommandInvocation>> Program(params ICommandInvocation[] invocations) => invocations.Select(Task.FromResult).ToList();
 
 static CommandInvocationArgument Nested(ICommandInvocation invocation) => new(invocation);
@@ -443,9 +508,19 @@ sealed class SurroundCommand : ICommand
 
 [Command("compile-marker")]
 [CommandTypes([], [])]
-[CompileTime]
-sealed class CompileMarkerCommand : ICommand
+[NoRuntimeInvocation]
+sealed class CompileMarkerCommand : ICommand, ICompileTimePhase
 {
+
+    public Task<ICommandOutput> ExecuteCompileTimeAsync(
+        IReadOnlyList<ICommandArgument> arguments,
+        ICompilationContext context,
+        CancellationToken cancellationToken = default)
+    {
+        CommandCounts.CompileMarkerCount++;
+        return Task.FromResult<ICommandOutput>(CommandOutput.Ok());
+    }
+
     public Task<ICommandOutput> Execute(ICommandIo input)
     {
         CommandCounts.CompileMarkerCount++;

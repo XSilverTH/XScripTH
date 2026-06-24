@@ -150,10 +150,19 @@ public sealed class XScriptParser
                     currentToken.Column);
             }
 
-            Consume(); // Consume ';'
+            if (ShouldConsumeNestedTerminator())
+            {
+                Consume(); // Consume nested ';'
+            }
 
             var nestedCommand = new XScriptCommandAst(nested.Name, nested.Arguments, XScriptCommandTerminator.Await);
             return new XScriptCommandArgumentAst(nestedCommand);
+        }
+        else if (currentToken.Type == TokenType.Variable)
+        {
+            var name = (string)currentToken.Value!;
+            Consume(); // Consume variable
+            return new XScriptVariableArgumentAst(name);
         }
         else if (currentToken.Type == TokenType.String ||
                  currentToken.Type == TokenType.Char ||
@@ -174,12 +183,30 @@ public sealed class XScriptParser
         }
     }
 
+    private bool ShouldConsumeNestedTerminator()
+    {
+        var nextPosition = position;
+        while (nextPosition < source.Length && char.IsWhiteSpace(source[nextPosition]))
+        {
+            nextPosition++;
+        }
+
+        if (nextPosition >= source.Length)
+        {
+            return false;
+        }
+
+        var next = source[nextPosition];
+        return next == ',' || next == ';';
+    }
+
     private bool IsArgumentStart(TokenType type)
     {
         return type == TokenType.String ||
                type == TokenType.Char ||
                type == TokenType.Number ||
                type == TokenType.Bool ||
+               type == TokenType.Variable ||
                type == TokenType.Identifier;
     }
 
@@ -193,6 +220,7 @@ public sealed class XScriptParser
         return t.Type switch
         {
             TokenType.EndOfFile => "EOF",
+            TokenType.Variable => $"${t.Value}",
             _ => t.Value?.ToString() ?? t.Type.ToString()
         };
     }
@@ -270,12 +298,34 @@ public sealed class XScriptParser
             return ReadNumberToken(startPos, startLine, startCol);
         }
 
+        if (c == '$')
+        {
+            return ReadVariableToken(startPos, startLine, startCol);
+        }
+
         if (char.IsLetter(c) || c == '_')
         {
             return ReadIdentifierOrBoolToken(startPos, startLine, startCol);
         }
 
         throw new XScriptParseException($"Unexpected character '{c}'", startPos, startLine, startCol);
+    }
+
+    private Token ReadVariableToken(int startPos, int startLine, int startCol)
+    {
+        Advance(); // Consume '$'
+        if (position >= source.Length || (!char.IsLetter(source[position]) && source[position] != '_'))
+        {
+            throw new XScriptParseException("Expected variable name after '$'.", startPos, startLine, startCol);
+        }
+
+        var nameStart = position;
+        while (position < source.Length && (char.IsLetterOrDigit(source[position]) || source[position] == '_' || source[position] == '-'))
+        {
+            Advance();
+        }
+
+        return new Token(TokenType.Variable, source.Substring(nameStart, position - nameStart), startPos, startLine, startCol);
     }
 
     private Token ReadStringToken(int startPos, int startLine, int startCol)
@@ -500,6 +550,7 @@ public sealed class XScriptParser
     private enum TokenType
     {
         Identifier,
+        Variable,
         String,
         Char,
         Number,
