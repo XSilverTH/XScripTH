@@ -1,7 +1,7 @@
 using XScripTH.Contracts.Interfaces;
-using XScripTH.Engine.Models;
+using XScripTH.Language.Validation.Models;
 
-namespace XScripTH.Engine;
+namespace XScripTH.Language.Validation;
 
 public interface ICommandTypeChecker
 {

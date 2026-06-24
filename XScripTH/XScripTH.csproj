@@ -1,4 +1,4 @@
-﻿<Project Sdk="Microsoft.NET.Sdk">
+<Project Sdk="Microsoft.NET.Sdk">
 
     <PropertyGroup>
         <OutputType>Exe</OutputType>
@@ -6,5 +6,11 @@
         <ImplicitUsings>enable</ImplicitUsings>
         <Nullable>enable</Nullable>
     </PropertyGroup>
+
+    <ItemGroup>
+        <ProjectReference Include="..\XScripTH.Core\XScripTH.Core.csproj" />
+        <ProjectReference Include="..\XScripTH.Engine\XScripTH.Engine.csproj" />
+        <ProjectReference Include="..\XScripTH.Language\XScripTH.Language.csproj" />
+    </ItemGroup>
 
 </Project>

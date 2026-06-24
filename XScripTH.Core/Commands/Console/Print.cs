@@ -2,11 +2,11 @@ using XScripTH.Contracts.Attributes;
 using XScripTH.Contracts.Interfaces;
 using XScripTH.Contracts.Models;
 
-namespace XScripTH.Core.Console;
+namespace XScripTH.Core.Commands.Console;
 
 [Command("print")]
 [CommandTypes([typeof(string)], [])]
-public class Print:ICommand
+public sealed class Print : ICommand
 {
     public Task<ICommandOutput> Execute(ICommandIo input)
     {

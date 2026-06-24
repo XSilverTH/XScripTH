@@ -1,6 +1,7 @@
 <Project Sdk="Microsoft.NET.Sdk">
 
     <PropertyGroup>
+        <OutputType>Exe</OutputType>
         <TargetFramework>net10.0</TargetFramework>
         <ImplicitUsings>enable</ImplicitUsings>
         <Nullable>enable</Nullable>
@@ -8,6 +9,8 @@
 
     <ItemGroup>
         <ProjectReference Include="..\XScripTH.Contracts\XScripTH.Contracts.csproj" />
+        <ProjectReference Include="..\XScripTH.Engine\XScripTH.Engine.csproj" />
+        <ProjectReference Include="..\XScripTH.Language\XScripTH.Language.csproj" />
     </ItemGroup>
 
 </Project>

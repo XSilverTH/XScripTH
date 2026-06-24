@@ -4,7 +4,7 @@ using XScripTH.Contracts.Models;
 
 namespace XScripTH.Engine;
 
-public sealed class XScripTHEngine
+public sealed class XScripTHEngine : ICommandExecutor
 {
     public async Task<ICommandOutput> ExecuteAsync(
         IEnumerable<Task<ICommandInvocation>> commands,

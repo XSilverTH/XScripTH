@@ -1,6 +1,6 @@
-using XScripTH.Engine.Models;
+using XScripTH.Language.Validation.Models;
 
-namespace XScripTH.Engine.Exceptions;
+namespace XScripTH.Language.Validation.Exceptions;
 
 public sealed class CommandTypeCheckException : Exception
 {

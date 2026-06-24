@@ -1,4 +1,4 @@
-namespace XScripTH.Engine.Models;
+namespace XScripTH.Language.Validation.Models;
 
 public sealed class CommandTypeCheckResult
 {

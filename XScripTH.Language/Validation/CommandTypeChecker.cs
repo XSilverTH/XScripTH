@@ -2,10 +2,10 @@ using System.Reflection;
 using XScripTH.Contracts.Attributes;
 using XScripTH.Contracts.Interfaces;
 using XScripTH.Contracts.Models;
-using XScripTH.Engine.Exceptions;
-using XScripTH.Engine.Models;
+using XScripTH.Language.Validation.Exceptions;
+using XScripTH.Language.Validation.Models;
 
-namespace XScripTH.Engine;
+namespace XScripTH.Language.Validation;
 
 public sealed class CommandTypeChecker : ICommandTypeChecker
 {
