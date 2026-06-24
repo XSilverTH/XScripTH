@@ -6,4 +6,12 @@
         <Nullable>enable</Nullable>
     </PropertyGroup>
 
+    <ItemGroup>
+      <Folder Include="Std\" />
+    </ItemGroup>
+
+    <ItemGroup>
+      <ProjectReference Include="..\XScripTH.Contracts\XScripTH.Contracts.csproj" />
+    </ItemGroup>
+
 </Project>
