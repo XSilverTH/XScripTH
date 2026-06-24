@@ -481,7 +481,7 @@ public sealed class XScriptParser
 
     private Token ReadIdentifierOrBoolToken(int startPos, int startLine, int startCol)
     {
-        while (position < source.Length && (char.IsLetterOrDigit(source[position]) || source[position] == '_'))
+        while (position < source.Length && (char.IsLetterOrDigit(source[position]) || source[position] == '_' || source[position] == '-'))
         {
             Advance();
         }

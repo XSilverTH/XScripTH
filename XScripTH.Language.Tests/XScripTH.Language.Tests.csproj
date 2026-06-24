@@ -9,6 +9,7 @@
 
     <ItemGroup>
         <ProjectReference Include="..\XScripTH.Contracts\XScripTH.Contracts.csproj" />
+        <ProjectReference Include="..\XScripTH.Core\XScripTH.Core.csproj" />
         <ProjectReference Include="..\XScripTH.Engine\XScripTH.Engine.csproj" />
         <ProjectReference Include="..\XScripTH.Language\XScripTH.Language.csproj" />
     </ItemGroup>

@@ -6,6 +6,7 @@ using System.Threading.Tasks;
 using XScripTH.Contracts.Attributes;
 using XScripTH.Contracts.Interfaces;
 using XScripTH.Contracts.Models;
+using XScripTH.Core.Commands.Reflection;
 using XScripTH.Engine;
 using XScripTH.Language;
 using XScripTH.Language.Ast;
@@ -24,7 +25,10 @@ var tests = new (string Name, Func<Task> Run)[]
     ("supports comma separated nested command among literals", CommaSeparatedNestedCommandAmongLiterals),
     ("double semicolon runs without waiting", DoubleSemicolonRunsWithoutWaiting),
     ("nested double semicolon is rejected", NestedDoubleSemicolonIsRejected),
-    ("unknown command fails during compile", UnknownCommandFailsDuringCompile)
+    ("unknown command fails during compile", UnknownCommandFailsDuringCompile),
+    ("compile-time command is executed during compile and omitted at runtime", CompileTimeCommandExecutesDuringCompileAndIsOmittedAtRuntime),
+    ("registry injects command registrar into constructors", RegistryInjectsCommandRegistrarIntoConstructors),
+    ("import command registers commands before later lines compile", ImportCommandRegistersCommandsBeforeLaterLinesCompile)
 };
 
 foreach (var test in tests)
@@ -210,6 +214,49 @@ static async Task UnknownCommandFailsDuringCompile()
     AssertEqual("missing", exception.CommandName);
 }
 
+static async Task CompileTimeCommandExecutesDuringCompileAndIsOmittedAtRuntime()
+{
+    CommandCounts.Reset();
+    var registry = CommandRegistry.FromAssemblies(typeof(CompileMarkerCommand).Assembly);
+    var compiler = new XScriptCompiler(registry);
+    var invocationTasks = await compiler.CompileAsync("compile-marker; mark;");
+
+    AssertEqual(1, CommandCounts.CompileMarkerCount);
+
+    var engine = new XScripTHEngine();
+    var outputs = await engine.ExecuteAllAsync(invocationTasks);
+
+    AssertEqual(1, outputs.Count);
+    AssertEqual(1, CommandCounts.MarkCount);
+    AssertEqual(1, CommandCounts.CompileMarkerCount);
+}
+
+static async Task RegistryInjectsCommandRegistrarIntoConstructors()
+{
+    var registry = CommandRegistry.FromAssemblies(typeof(RegistrarInjectedCommand).Assembly);
+    var compiler = new XScriptCompiler(registry);
+    var invocationTasks = await compiler.CompileAsync("di-ready;");
+    var engine = new XScripTHEngine();
+    var outputs = await engine.ExecuteAllAsync(invocationTasks);
+
+    AssertEqual(1, outputs.Count);
+    AssertEqual(true, (bool)outputs[0].Values![0]!);
+}
+
+static async Task ImportCommandRegistersCommandsBeforeLaterLinesCompile()
+{
+    var registry = CommandRegistry.FromAssemblies(typeof(Import).Assembly);
+    var compiler = new XScriptCompiler(registry);
+    var pluginPath = typeof(ImportedTextCommand).Assembly.Location;
+    var escapedPluginPath = pluginPath.Replace("\\", "\\\\").Replace("\"", "\\\"");
+    var invocationTasks = await compiler.CompileAsync($"import \"{escapedPluginPath}\"; imported-text;");
+    var engine = new XScripTHEngine();
+    var outputs = await engine.ExecuteAllAsync(invocationTasks);
+
+    AssertEqual(1, outputs.Count);
+    AssertEqual("from import", (string)outputs[0].Values![0]!);
+}
+
 static List<Task<ICommandInvocation>> Program(params ICommandInvocation[] invocations) => invocations.Select(Task.FromResult).ToList();
 
 static CommandInvocationArgument Nested(ICommandInvocation invocation) => new(invocation);
@@ -286,6 +333,7 @@ public static class CommandCounts
     public static int NumberCount;
     public static int SurroundCount;
     public static int MarkCount;
+    public static int CompileMarkerCount;
 
     public static void Reset()
     {
@@ -294,6 +342,7 @@ public static class CommandCounts
         NumberCount = 0;
         SurroundCount = 0;
         MarkCount = 0;
+        CompileMarkerCount = 0;
     }
 }
 
@@ -388,5 +437,38 @@ sealed class SurroundCommand : ICommand
         var val2 = (string)input.Values[1]!;
         var val3 = (string)input.Values[2]!;
         return Task.FromResult<ICommandOutput>(CommandOutput.Ok([val1 + val2 + val3]));
+    }
+}
+
+
+[Command("compile-marker")]
+[CommandTypes([], [])]
+[CompileTime]
+sealed class CompileMarkerCommand : ICommand
+{
+    public Task<ICommandOutput> Execute(ICommandIo input)
+    {
+        CommandCounts.CompileMarkerCount++;
+        return Task.FromResult<ICommandOutput>(CommandOutput.Ok());
+    }
+}
+
+[Command("di-ready")]
+[CommandTypes([], [typeof(bool)])]
+sealed class RegistrarInjectedCommand(ICommandRegistrar registrar) : ICommand
+{
+    public Task<ICommandOutput> Execute(ICommandIo input)
+    {
+        return Task.FromResult<ICommandOutput>(CommandOutput.Ok([registrar is not null]));
+    }
+}
+
+[Command("imported-text")]
+[CommandTypes([], [typeof(string)])]
+sealed class ImportedTextCommand : ICommand
+{
+    public Task<ICommandOutput> Execute(ICommandIo input)
+    {
+        return Task.FromResult<ICommandOutput>(CommandOutput.Ok(["from import"]));
     }
 }

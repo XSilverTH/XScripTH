@@ -1,14 +1,23 @@
 using System;
 using System.Collections.Generic;
+using System.Linq;
 using System.Reflection;
 using XScripTH.Contracts.Attributes;
 using XScripTH.Contracts.Interfaces;
 
 namespace XScripTH.Language;
 
-public sealed class CommandRegistry : ICommandRegistry
+public sealed class CommandRegistry : ICommandRegistry, ICommandRegistrar
 {
     private readonly Dictionary<string, Func<ICommand>> _factories = new(StringComparer.Ordinal);
+    private readonly Dictionary<Type, object> _services = new();
+
+    public CommandRegistry()
+    {
+        RegisterService(typeof(CommandRegistry), this);
+        RegisterService(typeof(ICommandRegistry), this);
+        RegisterService(typeof(ICommandRegistrar), this);
+    }
 
     public static CommandRegistry FromAssemblies(params Assembly[] assemblies)
     {
@@ -16,25 +25,7 @@ public sealed class CommandRegistry : ICommandRegistry
         var registry = new CommandRegistry();
         foreach (var assembly in assemblies)
         {
-            foreach (var type in assembly.GetTypes())
-            {
-                if (type.IsAbstract || type.IsInterface || !typeof(ICommand).IsAssignableFrom(type))
-                {
-                    continue;
-                }
-
-                // Check for public parameterless constructor
-                var ctor = type.GetConstructor(BindingFlags.Public | BindingFlags.Instance, null, Type.EmptyTypes, null);
-                if (ctor == null)
-                {
-                    continue;
-                }
-
-                var commandAttr = type.GetCustomAttribute<CommandAttribute>();
-                var name = commandAttr?.Name ?? type.Name;
-
-                registry.Register(name, () => (ICommand)Activator.CreateInstance(type)!);
-            }
+            registry.RegisterAssembly(assembly);
         }
         return registry;
     }
@@ -48,6 +39,56 @@ public sealed class CommandRegistry : ICommandRegistry
             registry.Register(name, factory);
         }
         return registry;
+    }
+
+    public void RegisterService<TService>(TService service) where TService : notnull =>
+        RegisterService(typeof(TService), service);
+
+    public void RegisterService(Type serviceType, object service)
+    {
+        ArgumentNullException.ThrowIfNull(serviceType);
+        ArgumentNullException.ThrowIfNull(service);
+
+        if (!serviceType.IsInstanceOfType(service))
+        {
+            throw new ArgumentException($"Service must be an instance of '{serviceType.FullName}'.", nameof(service));
+        }
+
+        if (_services.ContainsKey(serviceType))
+        {
+            throw new InvalidOperationException($"A service of type '{serviceType.FullName}' has already been registered.");
+        }
+
+        _services[serviceType] = service;
+    }
+
+    public void RegisterAssembly(Assembly assembly)
+    {
+        ArgumentNullException.ThrowIfNull(assembly);
+
+        foreach (var type in assembly.GetTypes())
+        {
+            if (type.IsAbstract || type.IsInterface || !typeof(ICommand).IsAssignableFrom(type))
+            {
+                continue;
+            }
+
+            var constructor = SelectResolvableConstructor(type);
+            if (constructor == null)
+            {
+                continue;
+            }
+
+            var commandAttr = type.GetCustomAttribute<CommandAttribute>();
+            var name = commandAttr?.Name ?? type.Name;
+            var parameterTypes = constructor.GetParameters().Select(parameter => parameter.ParameterType).ToArray();
+
+            Register(name, () =>
+            {
+                var resolvedServices = parameterTypes.Select(parameterType => _services[parameterType]).ToArray();
+                return (ICommand)constructor.Invoke(resolvedServices);
+            });
+        }
     }
 
     public void Register(string name, Func<ICommand> factory)
@@ -74,5 +115,28 @@ public sealed class CommandRegistry : ICommandRegistry
 
         command = null;
         return false;
+    }
+
+    private ConstructorInfo? SelectResolvableConstructor(Type type)
+    {
+        var constructors = type
+            .GetConstructors(BindingFlags.Public | BindingFlags.Instance)
+            .Where(constructor => constructor.GetParameters().All(parameter => _services.ContainsKey(parameter.ParameterType)))
+            .OrderByDescending(constructor => constructor.GetParameters().Length)
+            .ToArray();
+
+        if (constructors.Length == 0)
+        {
+            return null;
+        }
+
+        var selected = constructors[0];
+        if (constructors.Length > 1 &&
+            constructors[1].GetParameters().Length == selected.GetParameters().Length)
+        {
+            throw new InvalidOperationException($"Command type '{type.FullName}' has multiple resolvable constructors.");
+        }
+
+        return selected;
     }
 }
