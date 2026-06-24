@@ -5,13 +5,13 @@ using XScripTH.Contracts.Models;
 namespace XScripTH.Core.Console;
 
 [Command("print")]
-[CommandTypes([typeof(string)])]
+[CommandTypes([typeof(string)], [])]
 public class Print:ICommand
 {
-    public ICommandOutput Execute(ICommandIo input)
+    public Task<ICommandOutput> Execute(ICommandIo input)
     {
         System.Console.WriteLine(input.Values![0] as string);
 
-        return CommandOutput.Ok();
+        return Task.FromResult<ICommandOutput>(CommandOutput.Ok());
     }
 }

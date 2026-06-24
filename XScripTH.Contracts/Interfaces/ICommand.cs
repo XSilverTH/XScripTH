@@ -2,5 +2,5 @@ namespace XScripTH.Contracts.Interfaces;
 
 public interface ICommand
 {
-    public ICommandOutput Execute(ICommandIo input);
+    public Task<ICommandOutput> Execute(ICommandIo input);
 }
