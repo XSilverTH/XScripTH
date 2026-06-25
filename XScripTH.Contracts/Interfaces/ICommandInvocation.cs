@@ -5,4 +5,6 @@ public interface ICommandInvocation
     Task<ICommand> CommandTask { get; }
 
     IReadOnlyList<ICommandArgument> Arguments { get; }
+
+    Type[]? StaticOutputTypes => null;
 }
