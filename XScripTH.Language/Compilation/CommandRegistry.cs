@@ -15,12 +15,6 @@ public sealed class CommandRegistry : ICommandRegistry, ICommandRegistrar
 
     public CommandRegistry()
     {
-        var variableStore = new VariableStore();
-        RegisterService(typeof(VariableStore), variableStore);
-        RegisterService(typeof(IVariableStore), variableStore);
-        var functionStore = new FunctionStore();
-        RegisterService(typeof(FunctionStore), functionStore);
-        RegisterService(typeof(IFunctionStore), functionStore);
         RegisterService(typeof(CommandRegistry), this);
         RegisterService(typeof(ICommandRegistry), this);
         RegisterService(typeof(ICommandRegistrar), this);
