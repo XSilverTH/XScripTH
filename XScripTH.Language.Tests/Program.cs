@@ -7,6 +7,7 @@ using XScripTH.Contracts.Attributes;
 using XScripTH.Contracts.Enums;
 using XScripTH.Contracts.Interfaces;
 using XScripTH.Contracts.Models;
+using XScripTH.Core.Commands.ControlFlow;
 using XScripTH.Core.Commands.Reflection;
 using XScripTH.Core.Commands.Variables;
 using XScripTH.Engine;
@@ -37,7 +38,14 @@ var tests = new (string Name, Func<Task> Run)[]
     ("unresolved variable fails during compile", UnresolvedVariableFailsDuringCompile),
     ("parses deferred block arguments", ParsesDeferredBlockArguments),
     ("parses implicit command block arguments", ParsesImplicitCommandBlockArguments),
-    ("parses function references", ParsesFunctionReferences)
+    ("parses function references", ParsesFunctionReferences),
+    ("block transparent resolution feeds string input", BlockTransparentResolutionFeedsStringInput),
+    ("if explicit block condition executes body", IfExplicitBlockConditionExecutesBody),
+    ("if implicit command body executes once", IfImplicitCommandBodyExecutesOnce),
+    ("function reference resolves as value", FunctionReferenceResolvesAsValue),
+    ("function reference resolves as block", FunctionReferenceResolvesAsBlock),
+    ("block output mismatch fails compile", BlockOutputMismatchFailsCompile),
+    ("forward function reference fails compile", ForwardFunctionReferenceFailsCompile)
 };
 
 foreach (var test in tests)
@@ -373,6 +381,102 @@ static Task ParsesFunctionReferences()
     return Task.CompletedTask;
 }
 
+static async Task BlockTransparentResolutionFeedsStringInput()
+{
+    CapturedValues.Reset();
+    var engine = new XScripTHEngine();
+    var compiler = CreateControlFlowCompiler(engine);
+    var invocationTasks = await compiler.CompileAsync("capture { return \"hi\"; },'x',5,5l,5.25f,5.25d,5.25m,true;");
+
+    await engine.ExecuteAllAsync(invocationTasks);
+
+    AssertEqual(1, CapturedValues.ExecuteCount);
+    AssertEqual("hi", CapturedValues.StringValue);
+}
+
+static async Task IfExplicitBlockConditionExecutesBody()
+{
+    CommandCounts.Reset();
+    var engine = new XScripTHEngine();
+    var compiler = CreateControlFlowCompiler(engine);
+    var invocationTasks = await compiler.CompileAsync("if { return true; }, { mark; };");
+
+    await engine.ExecuteAllAsync(invocationTasks);
+
+    AssertEqual(1, CommandCounts.MarkCount);
+}
+
+static async Task IfImplicitCommandBodyExecutesOnce()
+{
+    CommandCounts.Reset();
+    var engine = new XScripTHEngine();
+    var compiler = CreateControlFlowCompiler(engine);
+    var invocationTasks = await compiler.CompileAsync("if truth;, body;");
+
+    await engine.ExecuteAllAsync(invocationTasks);
+
+    AssertEqual(1, CommandCounts.TruthCount);
+    AssertEqual(1, CommandCounts.BodyCount);
+}
+
+static async Task FunctionReferenceResolvesAsValue()
+{
+    CapturedValues.Reset();
+    var engine = new XScripTHEngine();
+    var compiler = CreateControlFlowCompiler(engine);
+    var invocationTasks = await compiler.CompileAsync("func \"answer\", { return 42; }; consume-int @answer;");
+
+    await engine.ExecuteAllAsync(invocationTasks);
+
+    AssertEqual(42, CapturedValues.IntValue);
+}
+
+static async Task FunctionReferenceResolvesAsBlock()
+{
+    CommandCounts.Reset();
+    var engine = new XScripTHEngine();
+    var compiler = CreateControlFlowCompiler(engine);
+    var invocationTasks = await compiler.CompileAsync("func \"body\", { mark; }; if true, @body;");
+
+    await engine.ExecuteAllAsync(invocationTasks);
+
+    AssertEqual(1, CommandCounts.MarkCount);
+}
+
+static async Task BlockOutputMismatchFailsCompile()
+{
+    var engine = new XScripTHEngine();
+    var compiler = CreateControlFlowCompiler(engine);
+
+    var exception = await AssertThrowsAsync<CommandTypeCheckException>(async () =>
+    {
+        await compiler.CompileAsync("length { return 42; };");
+    });
+
+    AssertEqual(1, exception.Errors.Count);
+    AssertEqual(typeof(string), exception.Errors[0].ExpectedType);
+    AssertEqual(typeof(int), exception.Errors[0].ActualType);
+}
+
+static async Task ForwardFunctionReferenceFailsCompile()
+{
+    var engine = new XScripTHEngine();
+    var compiler = CreateControlFlowCompiler(engine);
+
+    var exception = await AssertThrowsAsync<XScriptFunctionResolutionException>(async () =>
+    {
+        await compiler.CompileAsync("length @later; func \"later\", { return \"hello\"; };");
+    });
+
+    AssertEqual("later", exception.FunctionName);
+}
+
+static XScriptCompiler CreateControlFlowCompiler(XScripTHEngine engine)
+{
+    var registry = CommandRegistry.FromAssemblies(typeof(ReturnCommand).Assembly, typeof(TextCommand).Assembly);
+    return new XScriptCompiler(registry, executor: engine);
+}
+
 static List<Task<ICommandInvocation>> Program(params ICommandInvocation[] invocations) => invocations.Select(Task.FromResult).ToList();
 
 static CommandInvocationArgument Nested(ICommandInvocation invocation) => new(invocation);
@@ -450,6 +554,8 @@ public static class CommandCounts
     public static int SurroundCount;
     public static int MarkCount;
     public static int CompileMarkerCount;
+    public static int TruthCount;
+    public static int BodyCount;
 
     public static void Reset()
     {
@@ -459,6 +565,8 @@ public static class CommandCounts
         SurroundCount = 0;
         MarkCount = 0;
         CompileMarkerCount = 0;
+        TruthCount = 0;
+        BodyCount = 0;
     }
 }
 
@@ -538,6 +646,39 @@ sealed class MarkCommand : ICommand
     public Task<ICommandOutput> Execute(ICommandIo input)
     {
         CommandCounts.MarkCount++;
+        return Task.FromResult<ICommandOutput>(CommandOutput.Ok());
+    }
+}
+
+[Command("truth")]
+[CommandTypes([], [typeof(bool)])]
+sealed class TruthCommand : ICommand
+{
+    public Task<ICommandOutput> Execute(ICommandIo input)
+    {
+        CommandCounts.TruthCount++;
+        return Task.FromResult<ICommandOutput>(CommandOutput.Ok([true]));
+    }
+}
+
+[Command("body")]
+[CommandTypes([], [])]
+sealed class BodyCommand : ICommand
+{
+    public Task<ICommandOutput> Execute(ICommandIo input)
+    {
+        CommandCounts.BodyCount++;
+        return Task.FromResult<ICommandOutput>(CommandOutput.Ok());
+    }
+}
+
+[Command("consume-int")]
+[CommandTypes([typeof(int)], [])]
+sealed class ConsumeIntCommand : ICommand
+{
+    public Task<ICommandOutput> Execute(ICommandIo input)
+    {
+        CapturedValues.IntValue = (int)input.Values![0]!;
         return Task.FromResult<ICommandOutput>(CommandOutput.Ok());
     }
 }

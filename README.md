@@ -54,6 +54,31 @@ var $message, "Hello";
 print $message;
 ```
 
+### Deferred Blocks and Functions
+Use `{ ... }` to pass a command block without executing it immediately. Commands inside the block still use normal `;` or `;;` terminators.
+```
+if { return true; }, { print "yes"; };
+```
+
+`return` echoes one value from a block so it can be used where a primitive value is expected.
+```
+print { return "hello"; };
+```
+
+Declare reusable blocks with `func`, then reference them with `@name`. Functions must be declared before any `@name` reference.
+```
+func "say", { return "hello"; };
+print @say;
+
+func "body", { print "tick"; };
+if true, @body;
+```
+
+`while` takes a condition block and a body block. The condition block is re-executed each iteration and must return one `bool`.
+```
+while { return true; }, { print "loop"; };
+```
+
 ---
 
 ## Defining Commands in C#

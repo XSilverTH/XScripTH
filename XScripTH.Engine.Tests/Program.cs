@@ -12,7 +12,11 @@ var tests = new (string Name, Func<Task> Run)[]
     ("bubbles nested error output without executing parent", BubblesNestedErrorOutputWithoutExecutingParent),
     ("runtime executes valid direct command inputs", RuntimeExecutesValidDirectCommandInputs),
     ("runtime resolves variable command arguments", RuntimeResolvesVariableCommandArguments),
-    ("runtime rejects missing variable command arguments", RuntimeRejectsMissingVariableCommandArguments)
+    ("runtime rejects missing variable command arguments", RuntimeRejectsMissingVariableCommandArguments),
+    ("passing block to string executes lazily", PassingBlockToStringExecutesLazily),
+    ("passing block as block does not execute first", PassingBlockAsBlockDoesNotExecuteFirst),
+    ("function reference to primitive executes stored block", FunctionReferenceToPrimitiveExecutesStoredBlock),
+    ("missing function reference throws name", MissingFunctionReferenceThrowsName)
 };
 
 foreach (var test in tests)
@@ -113,6 +117,65 @@ static async Task RuntimeRejectsMissingVariableCommandArguments()
     if (!exception.Message.Contains("$message"))
     {
         throw new InvalidOperationException($"Expected exception message containing '$message', but got '{exception.Message}'.");
+    }
+}
+
+static async Task PassingBlockToStringExecutesLazily()
+{
+    var literal = new LiteralStringCommand("hello");
+    var parent = new StringLengthCommand();
+    var block = new CommandBlockArgument(Program(Invoke(literal)), [typeof(string)]);
+    var invocation = Invoke(parent, block);
+
+    var result = await new XScripTHEngine().ExecuteAsync(Program(invocation));
+
+    AssertEqual(CommandStatus.Ok, result.Status);
+    AssertEqual(5, SingleValue<int>(result));
+    AssertEqual(1, literal.ExecuteCount);
+    AssertEqual(1, parent.ExecuteCount);
+}
+
+static async Task PassingBlockAsBlockDoesNotExecuteFirst()
+{
+    var literal = new LiteralStringCommand("hello");
+    var parent = new BlockAcceptingCommand();
+    var block = new CommandBlockArgument(Program(Invoke(literal)), [typeof(string)]);
+    var invocation = Invoke(parent, block);
+
+    var result = await new XScripTHEngine().ExecuteAsync(Program(invocation));
+
+    AssertEqual(CommandStatus.Ok, result.Status);
+    AssertEqual(1, SingleValue<int>(result));
+    AssertEqual(0, literal.ExecuteCount);
+}
+
+static async Task FunctionReferenceToPrimitiveExecutesStoredBlock()
+{
+    var literal = new LiteralStringCommand("hello");
+    var store = new FunctionStore();
+    store.Set("say", new CommandBlockArgument(Program(Invoke(literal)), [typeof(string)]));
+    var invocation = Invoke(new StringLengthCommand(), new CommandFunctionReferenceArgument("say", [typeof(string)], store));
+
+    var result = await new XScripTHEngine().ExecuteAsync(Program(invocation));
+
+    AssertEqual(CommandStatus.Ok, result.Status);
+    AssertEqual(5, SingleValue<int>(result));
+    AssertEqual(1, literal.ExecuteCount);
+}
+
+static async Task MissingFunctionReferenceThrowsName()
+{
+    var store = new FunctionStore();
+    var invocation = Invoke(new StringLengthCommand(), new CommandFunctionReferenceArgument("missing", [typeof(string)], store));
+
+    var exception = await AssertThrowsAsync<InvalidOperationException>(async () =>
+    {
+        await new XScripTHEngine().ExecuteAsync(Program(invocation));
+    });
+
+    if (!exception.Message.Contains("@missing"))
+    {
+        throw new InvalidOperationException($"Expected exception message containing '@missing', but got '{exception.Message}'.");
     }
 }
 
@@ -218,5 +281,15 @@ sealed class ErrorStringCommand : ICommand
     {
         ExecuteCount++;
         return Task.FromResult<ICommandOutput>(CommandOutput.Error(["bad"]));
+    }
+}
+
+[CommandTypes([typeof(CommandBlockArgument)], [typeof(int)])]
+sealed class BlockAcceptingCommand : ICommand
+{
+    public Task<ICommandOutput> Execute(ICommandIo input)
+    {
+        var block = (CommandBlockArgument)input.Values![0]!;
+        return Task.FromResult<ICommandOutput>(CommandOutput.Ok([block.Invocations.Count]));
     }
 }
