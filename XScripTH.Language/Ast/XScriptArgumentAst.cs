@@ -7,3 +7,7 @@ public sealed record XScriptLiteralArgumentAst(object Value) : XScriptArgumentAs
 public sealed record XScriptCommandArgumentAst(XScriptCommandAst Command) : XScriptArgumentAst;
 
 public sealed record XScriptVariableArgumentAst(string Name) : XScriptArgumentAst;
+
+public sealed record XScriptBlockArgumentAst(IReadOnlyList<XScriptCommandAst> Commands) : XScriptArgumentAst;
+
+public sealed record XScriptFunctionReferenceArgumentAst(string Name) : XScriptArgumentAst;

@@ -158,6 +158,33 @@ public sealed class XScriptParser
             var nestedCommand = new XScriptCommandAst(nested.Name, nested.Arguments, XScriptCommandTerminator.Await);
             return new XScriptCommandArgumentAst(nestedCommand);
         }
+        else if (currentToken.Type == TokenType.FunctionReference)
+        {
+            var name = (string)currentToken.Value!;
+            Consume(); // Consume function reference
+            return new XScriptFunctionReferenceArgumentAst(name);
+        }
+        else if (currentToken.Type == TokenType.OpenBrace)
+        {
+            Consume(); // Consume '{'
+            var commands = new List<XScriptCommandAst>();
+            while (currentToken.Type != TokenType.CloseBrace)
+            {
+                if (currentToken.Type == TokenType.EndOfFile)
+                {
+                    throw new XScriptParseException(
+                        "Unexpected end of file, expected '}' to close command block.",
+                        currentToken.Position,
+                        currentToken.Line,
+                        currentToken.Column);
+                }
+
+                commands.Add(ParseTopCommand());
+            }
+
+            Consume(); // Consume '}'
+            return new XScriptBlockArgumentAst(commands);
+        }
         else if (currentToken.Type == TokenType.Variable)
         {
             var name = (string)currentToken.Value!;
@@ -207,7 +234,9 @@ public sealed class XScriptParser
                type == TokenType.Number ||
                type == TokenType.Bool ||
                type == TokenType.Variable ||
-               type == TokenType.Identifier;
+               type == TokenType.Identifier ||
+               type == TokenType.OpenBrace ||
+               type == TokenType.FunctionReference;
     }
 
     private void Consume()
@@ -221,6 +250,7 @@ public sealed class XScriptParser
         {
             TokenType.EndOfFile => "EOF",
             TokenType.Variable => $"${t.Value}",
+            TokenType.FunctionReference => $"@{t.Value}",
             _ => t.Value?.ToString() ?? t.Type.ToString()
         };
     }
@@ -283,6 +313,18 @@ public sealed class XScriptParser
             return new Token(TokenType.Comma, ",", startPos, startLine, startCol);
         }
 
+        if (c == '{')
+        {
+            Advance();
+            return new Token(TokenType.OpenBrace, "{", startPos, startLine, startCol);
+        }
+
+        if (c == '}')
+        {
+            Advance();
+            return new Token(TokenType.CloseBrace, "}", startPos, startLine, startCol);
+        }
+
         if (c == '"')
         {
             return ReadStringToken(startPos, startLine, startCol);
@@ -301,6 +343,11 @@ public sealed class XScriptParser
         if (c == '$')
         {
             return ReadVariableToken(startPos, startLine, startCol);
+        }
+
+        if (c == '@')
+        {
+            return ReadFunctionReferenceToken(startPos, startLine, startCol);
         }
 
         if (char.IsLetter(c) || c == '_')
@@ -326,6 +373,23 @@ public sealed class XScriptParser
         }
 
         return new Token(TokenType.Variable, source.Substring(nameStart, position - nameStart), startPos, startLine, startCol);
+    }
+
+    private Token ReadFunctionReferenceToken(int startPos, int startLine, int startCol)
+    {
+        Advance(); // Consume '@'
+        if (position >= source.Length || (!char.IsLetter(source[position]) && source[position] != '_'))
+        {
+            throw new XScriptParseException("Expected function name after '@'.", startPos, startLine, startCol);
+        }
+
+        var nameStart = position;
+        while (position < source.Length && (char.IsLetterOrDigit(source[position]) || source[position] == '_' || source[position] == '-'))
+        {
+            Advance();
+        }
+
+        return new Token(TokenType.FunctionReference, source.Substring(nameStart, position - nameStart), startPos, startLine, startCol);
     }
 
     private Token ReadStringToken(int startPos, int startLine, int startCol)
@@ -558,6 +622,9 @@ public sealed class XScriptParser
         Comma,
         Semicolon,
         DoubleSemicolon,
+        OpenBrace,
+        CloseBrace,
+        FunctionReference,
         EndOfFile
     }
 

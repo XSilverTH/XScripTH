@@ -34,7 +34,10 @@ var tests = new (string Name, Func<Task> Run)[]
     ("variable literal assignment resolves at runtime", VariableLiteralAssignmentResolvesAtRuntime),
     ("variable nested assignment infers command output", VariableNestedAssignmentInfersCommandOutput),
     ("variable type mismatch fails during compile", VariableTypeMismatchFailsDuringCompile),
-    ("unresolved variable fails during compile", UnresolvedVariableFailsDuringCompile)
+    ("unresolved variable fails during compile", UnresolvedVariableFailsDuringCompile),
+    ("parses deferred block arguments", ParsesDeferredBlockArguments),
+    ("parses implicit command block arguments", ParsesImplicitCommandBlockArguments),
+    ("parses function references", ParsesFunctionReferences)
 };
 
 foreach (var test in tests)
@@ -320,6 +323,54 @@ static async Task UnresolvedVariableFailsDuringCompile()
     });
 
     AssertEqual("missing", exception.VariableName);
+}
+
+static Task ParsesDeferredBlockArguments()
+{
+    var parser = new XScriptParser();
+    var program = parser.Parse("if { return true; }, { mark; };");
+
+    AssertEqual(1, program.Commands.Count);
+    AssertEqual("if", program.Commands[0].Name);
+    AssertEqual(2, program.Commands[0].Arguments.Count);
+    var condition = (XScriptBlockArgumentAst)program.Commands[0].Arguments[0];
+    var body = (XScriptBlockArgumentAst)program.Commands[0].Arguments[1];
+    AssertEqual(1, condition.Commands.Count);
+    AssertEqual("return", condition.Commands[0].Name);
+    AssertEqual(1, body.Commands.Count);
+    AssertEqual("mark", body.Commands[0].Name);
+    return Task.CompletedTask;
+}
+
+static Task ParsesImplicitCommandBlockArguments()
+{
+    var parser = new XScriptParser();
+    var program = parser.Parse("if truth;, body;");
+
+    AssertEqual(1, program.Commands.Count);
+    AssertEqual("if", program.Commands[0].Name);
+    AssertEqual(2, program.Commands[0].Arguments.Count);
+    var condition = (XScriptCommandArgumentAst)program.Commands[0].Arguments[0];
+    var body = (XScriptCommandArgumentAst)program.Commands[0].Arguments[1];
+    AssertEqual("truth", condition.Command.Name);
+    AssertEqual("body", body.Command.Name);
+    return Task.CompletedTask;
+}
+
+static Task ParsesFunctionReferences()
+{
+    var parser = new XScriptParser();
+    var program = parser.Parse("func \"body\", { mark; }; if true, @body;");
+
+    AssertEqual(2, program.Commands.Count);
+    AssertEqual("func", program.Commands[0].Name);
+    AssertEqual(2, program.Commands[0].Arguments.Count);
+    var block = (XScriptBlockArgumentAst)program.Commands[0].Arguments[1];
+    AssertEqual("mark", block.Commands[0].Name);
+    AssertEqual("if", program.Commands[1].Name);
+    var function = (XScriptFunctionReferenceArgumentAst)program.Commands[1].Arguments[1];
+    AssertEqual("body", function.Name);
+    return Task.CompletedTask;
 }
 
 static List<Task<ICommandInvocation>> Program(params ICommandInvocation[] invocations) => invocations.Select(Task.FromResult).ToList();
