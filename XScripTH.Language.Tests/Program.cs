@@ -61,9 +61,9 @@ static async Task LiteralsExecution()
     CapturedValues.Reset();
     var registry = CommandRegistry.FromAssemblies(typeof(TextCommand).Assembly);
     var compiler = new XScriptCompiler(registry);
-    var invocationTasks = await compiler.CompileAsync("capture \"hi\",'x',5,5l,5.25f,5.25d,5.25m,true;");
+    var invocations = await compiler.CompileAsync("capture \"hi\",'x',5,5l,5.25f,5.25d,5.25m,true;");
     var engine = new XScripTHEngine();
-    var outputs = await engine.ExecuteAllAsync(invocationTasks);
+    var outputs = await engine.ExecuteAllAsync(invocations);
 
     AssertEqual(1, CapturedValues.ExecuteCount);
     AssertEqual("hi", CapturedValues.StringValue);
@@ -81,9 +81,9 @@ static async Task NestedCommandInputTypechecks()
     CommandCounts.Reset();
     var registry = CommandRegistry.FromAssemblies(typeof(TextCommand).Assembly);
     var compiler = new XScriptCompiler(registry);
-    var invocationTasks = await compiler.CompileAsync("length text; ;");
+    var invocations = await compiler.CompileAsync("length text; ;");
     var engine = new XScripTHEngine();
-    var outputs = await engine.ExecuteAllAsync(invocationTasks);
+    var outputs = await engine.ExecuteAllAsync(invocations);
 
     AssertEqual(1, outputs.Count);
     AssertEqual(5, (int)outputs[0].Values![0]!);
@@ -173,9 +173,9 @@ static async Task CommaSeparatedNestedCommandAmongLiterals()
     CommandCounts.Reset();
     var registry = CommandRegistry.FromAssemblies(typeof(TextCommand).Assembly);
     var compiler = new XScriptCompiler(registry);
-    var invocationTasks = await compiler.CompileAsync("surround \"<\",text;,\">\";");
+    var invocations = await compiler.CompileAsync("surround \"<\",text;,\">\";");
     var engine = new XScripTHEngine();
-    var outputs = await engine.ExecuteAllAsync(invocationTasks);
+    var outputs = await engine.ExecuteAllAsync(invocations);
 
     AssertEqual(1, outputs.Count);
     AssertEqual("<hello>", (string)outputs[0].Values![0]!);
@@ -190,10 +190,10 @@ static async Task DoubleSemicolonRunsWithoutWaiting()
 
     var registry = CommandRegistry.FromAssemblies(typeof(TextCommand).Assembly);
     var compiler = new XScriptCompiler(registry);
-    var invocationTasks = await compiler.CompileAsync("block;; mark;");
+    var invocations = await compiler.CompileAsync("block;; mark;");
     var engine = new XScripTHEngine();
 
-    var executeTask = engine.ExecuteAllAsync(invocationTasks);
+    var executeTask = engine.ExecuteAllAsync(invocations);
 
     // Let the tasks advance to ensure execution scheduler picks up the invocations
     await Task.Delay(100);
@@ -238,12 +238,12 @@ static async Task CompileTimeCommandExecutesDuringCompileAndIsOmittedAtRuntime()
     CommandCounts.Reset();
     var registry = CommandRegistry.FromAssemblies(typeof(CompileMarkerCommand).Assembly);
     var compiler = new XScriptCompiler(registry);
-    var invocationTasks = await compiler.CompileAsync("compile-marker; mark;");
+    var invocations = await compiler.CompileAsync("compile-marker; mark;");
 
     AssertEqual(1, CommandCounts.CompileMarkerCount);
 
     var engine = new XScripTHEngine();
-    var outputs = await engine.ExecuteAllAsync(invocationTasks);
+    var outputs = await engine.ExecuteAllAsync(invocations);
 
     AssertEqual(1, outputs.Count);
     AssertEqual(1, CommandCounts.MarkCount);
@@ -254,9 +254,9 @@ static async Task RegistryInjectsCommandRegistrarIntoConstructors()
 {
     var registry = CommandRegistry.FromAssemblies(typeof(RegistrarInjectedCommand).Assembly);
     var compiler = new XScriptCompiler(registry);
-    var invocationTasks = await compiler.CompileAsync("di-ready;");
+    var invocations = await compiler.CompileAsync("di-ready;");
     var engine = new XScripTHEngine();
-    var outputs = await engine.ExecuteAllAsync(invocationTasks);
+    var outputs = await engine.ExecuteAllAsync(invocations);
 
     AssertEqual(1, outputs.Count);
     AssertEqual(true, (bool)outputs[0].Values![0]!);
@@ -268,9 +268,9 @@ static async Task ImportCommandRegistersCommandsBeforeLaterLinesCompile()
     var compiler = new XScriptCompiler(registry);
     var pluginPath = typeof(ImportedTextCommand).Assembly.Location;
     var escapedPluginPath = pluginPath.Replace("\\", "\\\\").Replace("\"", "\\\"");
-    var invocationTasks = await compiler.CompileAsync($"import \"{escapedPluginPath}\"; imported-text;");
+    var invocations = await compiler.CompileAsync($"import \"{escapedPluginPath}\"; imported-text;");
     var engine = new XScripTHEngine();
-    var outputs = await engine.ExecuteAllAsync(invocationTasks);
+    var outputs = await engine.ExecuteAllAsync(invocations);
 
     AssertEqual(1, outputs.Count);
     AssertEqual("from import", (string)outputs[0].Values![0]!);
@@ -281,9 +281,9 @@ static async Task VariableLiteralAssignmentResolvesAtRuntime()
     CommandCounts.Reset();
     var registry = CommandRegistry.FromAssemblies(typeof(TextCommand).Assembly, typeof(Var).Assembly);
     var compiler = new XScriptCompiler(registry);
-    var invocationTasks = await compiler.CompileAsync("var $message, \"hello\"; length $message;");
+    var invocations = await compiler.CompileAsync("var $message, \"hello\"; length $message;");
     var engine = new XScripTHEngine();
-    var outputs = await engine.ExecuteAllAsync(invocationTasks);
+    var outputs = await engine.ExecuteAllAsync(invocations);
 
     AssertEqual(2, outputs.Count);
     AssertEqual(CommandStatus.Ok, outputs[0].Status);
@@ -295,9 +295,9 @@ static async Task VariableNestedAssignmentInfersCommandOutput()
     CommandCounts.Reset();
     var registry = CommandRegistry.FromAssemblies(typeof(TextCommand).Assembly, typeof(Var).Assembly);
     var compiler = new XScriptCompiler(registry);
-    var invocationTasks = await compiler.CompileAsync("var $message, text; length $message;");
+    var invocations = await compiler.CompileAsync("var $message, text; length $message;");
     var engine = new XScripTHEngine();
-    var outputs = await engine.ExecuteAllAsync(invocationTasks);
+    var outputs = await engine.ExecuteAllAsync(invocations);
 
     AssertEqual(2, outputs.Count);
     AssertEqual(5, (int)outputs[1].Values![0]!);
@@ -388,9 +388,9 @@ static async Task BlockTransparentResolutionFeedsStringInput()
     CapturedValues.Reset();
     var engine = new XScripTHEngine();
     var compiler = CreateControlFlowCompiler(engine);
-    var invocationTasks = await compiler.CompileAsync("capture { return \"hi\"; },'x',5,5l,5.25f,5.25d,5.25m,true;");
+    var invocations = await compiler.CompileAsync("capture { return \"hi\"; },'x',5,5l,5.25f,5.25d,5.25m,true;");
 
-    await engine.ExecuteAllAsync(invocationTasks);
+    await engine.ExecuteAllAsync(invocations);
 
     AssertEqual(1, CapturedValues.ExecuteCount);
     AssertEqual("hi", CapturedValues.StringValue);
@@ -401,9 +401,9 @@ static async Task IfExplicitBlockConditionExecutesBody()
     CommandCounts.Reset();
     var engine = new XScripTHEngine();
     var compiler = CreateControlFlowCompiler(engine);
-    var invocationTasks = await compiler.CompileAsync("if { return true; }, { mark; };");
+    var invocations = await compiler.CompileAsync("if { return true; }, { mark; };");
 
-    await engine.ExecuteAllAsync(invocationTasks);
+    await engine.ExecuteAllAsync(invocations);
 
     AssertEqual(1, CommandCounts.MarkCount);
 }
@@ -413,9 +413,9 @@ static async Task IfImplicitCommandBodyExecutesOnce()
     CommandCounts.Reset();
     var engine = new XScripTHEngine();
     var compiler = CreateControlFlowCompiler(engine);
-    var invocationTasks = await compiler.CompileAsync("if truth;, body;");
+    var invocations = await compiler.CompileAsync("if truth;, body;");
 
-    await engine.ExecuteAllAsync(invocationTasks);
+    await engine.ExecuteAllAsync(invocations);
 
     AssertEqual(1, CommandCounts.TruthCount);
     AssertEqual(1, CommandCounts.BodyCount);
@@ -426,9 +426,9 @@ static async Task FunctionReferenceResolvesAsValue()
     CapturedValues.Reset();
     var engine = new XScripTHEngine();
     var compiler = CreateControlFlowCompiler(engine);
-    var invocationTasks = await compiler.CompileAsync("func \"answer\", { return 42; }; consume-int @answer;");
+    var invocations = await compiler.CompileAsync("func \"answer\", { return 42; }; consume-int @answer;");
 
-    await engine.ExecuteAllAsync(invocationTasks);
+    await engine.ExecuteAllAsync(invocations);
 
     AssertEqual(42, CapturedValues.IntValue);
 }
@@ -438,9 +438,9 @@ static async Task FunctionReferenceResolvesAsBlock()
     CommandCounts.Reset();
     var engine = new XScripTHEngine();
     var compiler = CreateControlFlowCompiler(engine);
-    var invocationTasks = await compiler.CompileAsync("func \"body\", { mark; }; if true, @body;");
+    var invocations = await compiler.CompileAsync("func \"body\", { mark; }; if true, @body;");
 
-    await engine.ExecuteAllAsync(invocationTasks);
+    await engine.ExecuteAllAsync(invocations);
 
     AssertEqual(1, CommandCounts.MarkCount);
 }
@@ -478,9 +478,9 @@ static async Task BlockVariableScopeShadowsWithoutLeaking()
     CommandCounts.Reset();
     var engine = new XScripTHEngine();
     var compiler = CreateControlFlowCompiler(engine);
-    var invocationTasks = await compiler.CompileAsync("var $message, \"outer\"; if true, { var $message, \"longer\"; }; length $message;");
+    var invocations = await compiler.CompileAsync("var $message, \"outer\"; if true, { var $message, \"longer\"; }; length $message;");
 
-    var outputs = await engine.ExecuteAllAsync(invocationTasks);
+    var outputs = await engine.ExecuteAllAsync(invocations);
 
     AssertEqual(3, outputs.Count);
     AssertEqual(CommandStatus.Ok, outputs[0].Status);
