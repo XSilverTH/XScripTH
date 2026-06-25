@@ -191,14 +191,22 @@ public sealed class CommandTypeChecker : ICommandTypeChecker
 
                 case CommandBlockArgument blockArgument:
                     await ValidateBlockChildrenAsync(errors, blockArgument, currentPath, cancellationToken).ConfigureAwait(false);
-                    if (!IsBlockContainerExpected(expectedType))
+                    if (IsWhileConditionBlock(command, index))
+                    {
+                        AddNestedOutputCompatibilityErrors(errors, currentPath, typeof(bool), blockArgument.OutputTypes);
+                    }
+                    else if (!IsBlockContainerExpected(expectedType))
                     {
                         AddNestedOutputCompatibilityErrors(errors, currentPath, expectedType, blockArgument.OutputTypes);
                     }
                     break;
 
                 case CommandFunctionReferenceArgument functionReferenceArgument:
-                    if (!IsBlockContainerExpected(expectedType))
+                    if (IsWhileConditionBlock(command, index))
+                    {
+                        AddNestedOutputCompatibilityErrors(errors, currentPath, typeof(bool), functionReferenceArgument.OutputTypes);
+                    }
+                    else if (!IsBlockContainerExpected(expectedType))
                     {
                         AddNestedOutputCompatibilityErrors(errors, currentPath, expectedType, functionReferenceArgument.OutputTypes);
                     }
@@ -266,6 +274,9 @@ public sealed class CommandTypeChecker : ICommandTypeChecker
 
     private static bool IsBlockContainerExpected(Type expectedType) =>
         expectedType != typeof(object) && expectedType.IsAssignableFrom(typeof(CommandBlockArgument));
+
+    private static bool IsWhileConditionBlock(ICommand command, int argumentIndex) =>
+        argumentIndex == 0 && GetCommandName(command.GetType()) == "while";
 
     private static Type? GetArgumentActualType(ICommandArgument argument) => argument switch
     {
