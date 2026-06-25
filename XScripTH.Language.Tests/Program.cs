@@ -116,7 +116,7 @@ static async Task TypeCheckerAcceptsRecursiveCommandInputsWithoutExecutingThem()
     CommandCounts.Reset();
     var invocation = Invoke(new LengthCommand(), Nested(Invoke(new TextCommand())));
 
-    await CommandTypeChecker.Default.EnsureValidAsync(Program(invocation));
+    await CommandTypeChecker.Default.EnsureValidAsync(Program(invocation).Select(t => t.Result));
 
     AssertEqual(0, CommandCounts.TextCount);
     AssertEqual(0, CommandCounts.LengthCount);
@@ -125,10 +125,10 @@ static async Task TypeCheckerAcceptsRecursiveCommandInputsWithoutExecutingThem()
 static async Task TypeCheckerRejectsTopLevelOutputChaining()
 {
     var invocation = Invoke(new LengthCommand());
-    var exception = await AssertThrowsAsync<CommandTypeCheckException>(() =>
-        CommandTypeChecker.Default.EnsureValidAsync(Program(
+    var exception = await AssertThrowsAsync<CommandTypeCheckException>(async () =>
+        await CommandTypeChecker.Default.EnsureValidAsync(Program(
             Invoke(new TextCommand()),
-            invocation)));
+            invocation).Select(t => t.Result)));
 
     AssertEqual(typeof(LengthCommand), exception.CommandType);
     AssertEqual(1, exception.Errors.Count);
@@ -142,8 +142,8 @@ static async Task TypeCheckerRejectsNestedCommandOutputMismatch()
     CommandCounts.Reset();
     var invocation = Invoke(new LengthCommand(), Nested(Invoke(new NumberCommand())));
 
-    var exception = await AssertThrowsAsync<CommandTypeCheckException>(() =>
-        CommandTypeChecker.Default.EnsureValidAsync(Program(invocation)));
+    var exception = await AssertThrowsAsync<CommandTypeCheckException>(async () =>
+        await CommandTypeChecker.Default.EnsureValidAsync(Program(invocation).Select(t => t.Result)));
 
     AssertEqual(1, exception.Errors.Count);
     AssertPath([0], exception.Errors[0].Path);
@@ -163,7 +163,7 @@ static async Task TypeCheckerSupportsRecursiveNestedCommandInputs()
             Nested(Invoke(new TextCommand())),
             new CommandValueArgument(">"))));
 
-    await CommandTypeChecker.Default.EnsureValidAsync(Program(invocation));
+    await CommandTypeChecker.Default.EnsureValidAsync(Program(invocation).Select(t => t.Result));
 }
 
 static async Task CommaSeparatedNestedCommandAmongLiterals()

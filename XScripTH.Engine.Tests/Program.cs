@@ -94,11 +94,12 @@ static async Task RuntimeExecutesValidDirectCommandInputs()
 
 static async Task RuntimeResolvesVariableCommandArguments()
 {
-    var store = new VariableStore();
-    store.Set("message", "hello");
-    var invocation = Invoke(new StringLengthCommand(), new CommandVariableArgument("message", typeof(string), store));
+    var engine = new XScripTHEngine();
+    var context = new XScriptExecutionContext(engine);
+    context.SetVariable("message", "hello");
+    var invocation = Invoke(new StringLengthCommand(), new CommandVariableArgument("message", typeof(string)));
 
-    var result = await new XScripTHEngine().ExecuteAsync(Program(invocation));
+    var result = await engine.ExecuteAsync(Program(invocation), context);
 
     AssertEqual(CommandStatus.Ok, result.Status);
     AssertEqual(5, SingleValue<int>(result));
@@ -106,12 +107,13 @@ static async Task RuntimeResolvesVariableCommandArguments()
 
 static async Task RuntimeRejectsMissingVariableCommandArguments()
 {
-    var store = new VariableStore();
-    var invocation = Invoke(new StringLengthCommand(), new CommandVariableArgument("message", typeof(string), store));
+    var engine = new XScripTHEngine();
+    var context = new XScriptExecutionContext(engine);
+    var invocation = Invoke(new StringLengthCommand(), new CommandVariableArgument("message", typeof(string)));
 
     var exception = await AssertThrowsAsync<InvalidOperationException>(async () =>
     {
-        await new XScripTHEngine().ExecuteAsync(Program(invocation));
+        await engine.ExecuteAsync(Program(invocation), context);
     });
 
     if (!exception.Message.Contains("$message"))
@@ -124,7 +126,7 @@ static async Task PassingBlockToStringExecutesLazily()
 {
     var literal = new LiteralStringCommand("hello");
     var parent = new StringLengthCommand();
-    var block = new CommandBlockArgument(Program(Invoke(literal)), [typeof(string)]);
+    var block = new CommandBlockArgument([Invoke(literal)], [typeof(string)]);
     var invocation = Invoke(parent, block);
 
     var result = await new XScripTHEngine().ExecuteAsync(Program(invocation));
@@ -139,7 +141,7 @@ static async Task PassingBlockAsBlockDoesNotExecuteFirst()
 {
     var literal = new LiteralStringCommand("hello");
     var parent = new BlockAcceptingCommand();
-    var block = new CommandBlockArgument(Program(Invoke(literal)), [typeof(string)]);
+    var block = new CommandBlockArgument([Invoke(literal)], [typeof(string)]);
     var invocation = Invoke(parent, block);
 
     var result = await new XScripTHEngine().ExecuteAsync(Program(invocation));
@@ -152,11 +154,12 @@ static async Task PassingBlockAsBlockDoesNotExecuteFirst()
 static async Task FunctionReferenceToPrimitiveExecutesStoredBlock()
 {
     var literal = new LiteralStringCommand("hello");
-    var store = new FunctionStore();
-    store.Set("say", new CommandBlockArgument(Program(Invoke(literal)), [typeof(string)]));
-    var invocation = Invoke(new StringLengthCommand(), new CommandFunctionReferenceArgument("say", [typeof(string)], store));
+    var engine = new XScripTHEngine();
+    var context = new XScriptExecutionContext(engine);
+    context.SetFunction("say", new CommandBlockArgument([Invoke(literal)], [typeof(string)]));
+    var invocation = Invoke(new StringLengthCommand(), new CommandFunctionReferenceArgument("say", [typeof(string)]));
 
-    var result = await new XScripTHEngine().ExecuteAsync(Program(invocation));
+    var result = await engine.ExecuteAsync(Program(invocation), context);
 
     AssertEqual(CommandStatus.Ok, result.Status);
     AssertEqual(5, SingleValue<int>(result));
@@ -165,12 +168,13 @@ static async Task FunctionReferenceToPrimitiveExecutesStoredBlock()
 
 static async Task MissingFunctionReferenceThrowsName()
 {
-    var store = new FunctionStore();
-    var invocation = Invoke(new StringLengthCommand(), new CommandFunctionReferenceArgument("missing", [typeof(string)], store));
+    var engine = new XScripTHEngine();
+    var context = new XScriptExecutionContext(engine);
+    var invocation = Invoke(new StringLengthCommand(), new CommandFunctionReferenceArgument("missing", [typeof(string)]));
 
     var exception = await AssertThrowsAsync<InvalidOperationException>(async () =>
     {
-        await new XScripTHEngine().ExecuteAsync(Program(invocation));
+        await engine.ExecuteAsync(Program(invocation), context);
     });
 
     if (!exception.Message.Contains("@missing"))

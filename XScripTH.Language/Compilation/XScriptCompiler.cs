@@ -19,8 +19,6 @@ public sealed class XScriptCompiler
     private readonly ICommandTypeChecker _typeChecker;
     private readonly XScriptParser _parser;
     private readonly ICommandExecutor? _executor;
-    private readonly IVariableStore _variableStore;
-    private readonly IFunctionStore _functionStore;
 
     public XScriptCompiler(
         ICommandRegistry commandRegistry,
@@ -40,14 +38,6 @@ public sealed class XScriptCompiler
             {
                 registry.RegisterService<ICommandExecutor>(executor);
             }
-
-            _variableStore = registry.GetRequiredService<IVariableStore>();
-            _functionStore = registry.GetRequiredService<IFunctionStore>();
-        }
-        else
-        {
-            _variableStore = new VariableStore();
-            _functionStore = new FunctionStore();
         }
     }
 
@@ -70,7 +60,7 @@ public sealed class XScriptCompiler
         var lowered = await LowerCommandListAsync(ast.Commands, context, cancellationToken).ConfigureAwait(false);
 
         // Validate type safety before execution so nested outputs match parent inputs.
-        var invocationsToValidate = lowered.Select(l => Task.FromResult(l.Invocation)).ToList();
+        var invocationsToValidate = lowered.Select(l => l.Invocation).ToList();
         await _typeChecker.EnsureValidAsync(invocationsToValidate, cancellationToken).ConfigureAwait(false);
 
         var result = new List<Task<ICommandInvocation>>();
@@ -113,7 +103,7 @@ public sealed class XScriptCompiler
             ?? throw new InvalidOperationException("Fire-and-forget commands require an ICommandExecutor.");
         ICommand fireAndForgetCommand = new FireAndForgetCommand(invocation, executor);
         ICommandInvocation fireAndForgetInvocation = new CommandInvocation(
-            Task.FromResult(fireAndForgetCommand),
+            fireAndForgetCommand,
             Array.Empty<ICommandArgument>()
         );
         return Task.FromResult(Task.FromResult(fireAndForgetInvocation));
@@ -155,7 +145,7 @@ public sealed class XScriptCompiler
             staticOutputTypes = [staticOutputTypes[0]];
         }
 
-        var invocation = new CommandInvocation(Task.FromResult(command), arguments, staticOutputTypes);
+        var invocation = new CommandInvocation(command, arguments, staticOutputTypes);
         outputTypes = GetInvocationOutputTypes(invocation, command);
         if (phase is null)
         {
@@ -203,12 +193,12 @@ public sealed class XScriptCompiler
             case XScriptVariableArgumentAst variableArg:
                 if (context.Symbols.TryGetVariableType(variableArg.Name, out var variableType))
                 {
-                    return new CommandVariableArgument(variableArg.Name, variableType!, _variableStore);
+                    return new CommandVariableArgument(variableArg.Name, variableType!);
                 }
 
                 if (expectedInputType?.IsAssignableFrom(typeof(CommandVariableArgument)) == true)
                 {
-                    return new CommandVariableArgument(variableArg.Name, typeof(object), _variableStore);
+                    return new CommandVariableArgument(variableArg.Name, typeof(object));
                 }
 
                 throw new XScriptVariableResolutionException(variableArg.Name);
@@ -219,7 +209,7 @@ public sealed class XScriptCompiler
             case XScriptFunctionReferenceArgumentAst functionArg:
                 if (context.Symbols.TryGetFunctionOutputTypes(functionArg.Name, out var outputTypes))
                 {
-                    return new CommandFunctionReferenceArgument(functionArg.Name, outputTypes!, _functionStore);
+                    return new CommandFunctionReferenceArgument(functionArg.Name, outputTypes!);
                 }
 
                 throw new XScriptFunctionResolutionException(functionArg.Name);
@@ -233,8 +223,9 @@ public sealed class XScriptCompiler
                         throw new InvalidOperationException($"Command '{nested.Name}' cannot be used as a deferred block because it has no runtime invocation.");
                     }
 
-                    var invocationTask = await ApplyTerminatorAsync(nested.RuntimeInvocation, commandArg.Command.Terminator).ConfigureAwait(false);
-                    return new CommandBlockArgument([invocationTask], nested.OutputTypes);
+                    var invocationTaskTask = await ApplyTerminatorAsync(nested.RuntimeInvocation, commandArg.Command.Terminator).ConfigureAwait(false);
+                    var invocation = await invocationTaskTask.ConfigureAwait(false);
+                    return new CommandBlockArgument([invocation], nested.OutputTypes);
                 }
 
                 if (nested.CompileTimeOutput is not null)
@@ -261,10 +252,12 @@ public sealed class XScriptCompiler
         CancellationToken cancellationToken)
     {
         var lowered = await LowerCommandListAsync(blockAst.Commands, context, cancellationToken).ConfigureAwait(false);
-        var invocations = new List<Task<ICommandInvocation>>(lowered.Count);
+        var invocations = new List<ICommandInvocation>(lowered.Count);
         foreach (var (invocation, terminator, _) in lowered)
         {
-            invocations.Add(await ApplyTerminatorAsync(invocation, terminator).ConfigureAwait(false));
+            var invocationTaskTask = await ApplyTerminatorAsync(invocation, terminator).ConfigureAwait(false);
+            var commandInvocation = await invocationTaskTask.ConfigureAwait(false);
+            invocations.Add(commandInvocation);
         }
 
         var outputTypes = lowered.Count == 0 ? Array.Empty<Type>() : lowered[^1].OutputTypes;
@@ -292,7 +285,7 @@ public sealed class XScriptCompiler
 
     private Type[] GetNestedInvocationOutputTypes(ICommandInvocation invocation)
     {
-        var command = invocation.CommandTask.GetAwaiter().GetResult();
+        var command = invocation.Command;
         return GetInvocationOutputTypes(invocation, command);
     }
 

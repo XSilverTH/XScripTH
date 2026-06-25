@@ -8,13 +8,6 @@ namespace XScripTH.Core.Commands.ControlFlow;
 [CommandTypes([typeof(string), typeof(CommandBlockArgument)], [])]
 public sealed class FuncCommand : ICommand, ICompileTimePhase
 {
-    private readonly IFunctionStore _functions;
-
-    public FuncCommand(IFunctionStore functions)
-    {
-        ArgumentNullException.ThrowIfNull(functions);
-        _functions = functions;
-    }
 
     public Task<ICommandOutput> ExecuteCompileTimeAsync(
         IReadOnlyList<ICommandArgument> arguments,
@@ -64,9 +57,11 @@ public sealed class FuncCommand : ICommand, ICompileTimePhase
             throw new ArgumentException("func requires a command block as its second input value.", nameof(input));
         }
 
-        _functions.Set(name, block);
+        var context = input.ExecutionContext ?? throw new InvalidOperationException("Execution context is required.");
+        context.SetFunction(name, block);
         return Task.FromResult<ICommandOutput>(CommandOutput.Ok());
     }
+
 
     private static void ValidateName(string name)
     {

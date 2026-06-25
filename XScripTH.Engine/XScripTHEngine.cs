@@ -1,3 +1,4 @@
+using System.Linq;
 using System.Reflection;
 using XScripTH.Contracts.Attributes;
 using XScripTH.Contracts.Enums;
@@ -12,7 +13,15 @@ public sealed class XScripTHEngine : ICommandExecutor
         IEnumerable<Task<ICommandInvocation>> commands,
         CancellationToken cancellationToken = default)
     {
-        var outputs = await ExecuteAllAsync(commands, cancellationToken).ConfigureAwait(false);
+        return await ExecuteAsync(commands, new XScriptExecutionContext(this), cancellationToken).ConfigureAwait(false);
+    }
+
+    public async Task<ICommandOutput> ExecuteAsync(
+        IEnumerable<Task<ICommandInvocation>> commands,
+        IExecutionContext executionContext,
+        CancellationToken cancellationToken = default)
+    {
+        var outputs = await ExecuteAllAsync(commands, executionContext, cancellationToken).ConfigureAwait(false);
         return outputs.Count > 0 ? outputs[^1] : CommandOutput.Ok();
     }
 
@@ -20,14 +29,23 @@ public sealed class XScripTHEngine : ICommandExecutor
         IEnumerable<Task<ICommandInvocation>> commands,
         CancellationToken cancellationToken = default)
     {
+        return await ExecuteAllAsync(commands, new XScriptExecutionContext(this), cancellationToken).ConfigureAwait(false);
+    }
+
+    public async Task<IReadOnlyList<ICommandOutput>> ExecuteAllAsync(
+        IEnumerable<Task<ICommandInvocation>> commands,
+        IExecutionContext executionContext,
+        CancellationToken cancellationToken = default)
+    {
         ArgumentNullException.ThrowIfNull(commands);
+        ArgumentNullException.ThrowIfNull(executionContext);
 
         var outputs = new List<ICommandOutput>();
         foreach (var invocationTask in commands)
         {
             cancellationToken.ThrowIfCancellationRequested();
             var invocation = await invocationTask.WaitAsync(cancellationToken).ConfigureAwait(false);
-            var output = await ExecuteInvocationAsync(invocation, cancellationToken).ConfigureAwait(false);
+            var output = await ExecuteInvocationAsync(invocation, executionContext, cancellationToken).ConfigureAwait(false);
 
             outputs.Add(output);
             if (output.Status == CommandStatus.Error)
@@ -43,9 +61,18 @@ public sealed class XScripTHEngine : ICommandExecutor
         ICommandInvocation invocation,
         CancellationToken cancellationToken = default)
     {
-        ArgumentNullException.ThrowIfNull(invocation);
+        return await ExecuteInvocationAsync(invocation, new XScriptExecutionContext(this), cancellationToken).ConfigureAwait(false);
+    }
 
-        var command = await invocation.CommandTask.WaitAsync(cancellationToken).ConfigureAwait(false)
+    public async Task<ICommandOutput> ExecuteInvocationAsync(
+        ICommandInvocation invocation,
+        IExecutionContext executionContext,
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(invocation);
+        ArgumentNullException.ThrowIfNull(executionContext);
+
+        var command = invocation.Command
             ?? throw new InvalidOperationException("Command invocation returned null command.");
         var commandTypes = command.GetType().GetCustomAttribute<CommandTypesAttribute>();
         var inputs = commandTypes?.Inputs;
@@ -55,7 +82,7 @@ public sealed class XScripTHEngine : ICommandExecutor
         {
             cancellationToken.ThrowIfCancellationRequested();
             var expectedInputType = inputs is not null && index < inputs.Length ? inputs[index] : null;
-            var resolved = await ResolveArgumentAsync(invocation.Arguments[index], expectedInputType, cancellationToken).ConfigureAwait(false);
+            var resolved = await ResolveArgumentAsync(invocation.Arguments[index], expectedInputType, executionContext, cancellationToken).ConfigureAwait(false);
             if (resolved.ErrorOutput is not null)
             {
                 return resolved.ErrorOutput;
@@ -64,7 +91,7 @@ public sealed class XScripTHEngine : ICommandExecutor
             values.Add(resolved.Value);
         }
 
-        var input = new CommandInput(values);
+        var input = new CommandInput(values, executionContext);
         var outputTask = command.Execute(input)
             ?? throw new InvalidOperationException($"Command '{command.GetType().FullName}' returned null output task.");
         var output = await outputTask.WaitAsync(cancellationToken).ConfigureAwait(false)
@@ -76,6 +103,7 @@ public sealed class XScripTHEngine : ICommandExecutor
     private async Task<ArgumentResolution> ResolveArgumentAsync(
         ICommandArgument argument,
         Type? expectedInputType,
+        IExecutionContext executionContext,
         CancellationToken cancellationToken)
     {
         switch (argument)
@@ -89,7 +117,7 @@ public sealed class XScripTHEngine : ICommandExecutor
                     return new ArgumentResolution(variableArgument, null);
                 }
 
-                if (!variableArgument.VariableStore.TryGet(variableArgument.Name, out var value))
+                if (!executionContext.TryGetVariable(variableArgument.Name, out var value))
                 {
                     throw new InvalidOperationException($"Variable '${variableArgument.Name}' has not been assigned.");
                 }
@@ -97,7 +125,7 @@ public sealed class XScripTHEngine : ICommandExecutor
                 return new ArgumentResolution(value, null);
 
             case CommandInvocationArgument invocationArgument:
-                var nestedOutput = await ExecuteInvocationAsync(invocationArgument.Invocation, cancellationToken).ConfigureAwait(false);
+                var nestedOutput = await ExecuteInvocationAsync(invocationArgument.Invocation, executionContext, cancellationToken).ConfigureAwait(false);
                 if (nestedOutput.Status == CommandStatus.Error)
                 {
                     return new ArgumentResolution(null, nestedOutput);
@@ -106,15 +134,15 @@ public sealed class XScripTHEngine : ICommandExecutor
                 return new ArgumentResolution(RequireSingleOutputValue(nestedOutput, "Nested command"), null);
 
             case CommandBlockArgument blockArgument:
-                return await ResolveBlockArgumentAsync(blockArgument, expectedInputType, cancellationToken).ConfigureAwait(false);
+                return await ResolveBlockArgumentAsync(blockArgument, expectedInputType, executionContext, cancellationToken).ConfigureAwait(false);
 
             case CommandFunctionReferenceArgument functionReferenceArgument:
-                if (!functionReferenceArgument.FunctionStore.TryGet(functionReferenceArgument.Name, out var block) || block is null)
+                if (!executionContext.TryGetFunction(functionReferenceArgument.Name, out var block) || block is null)
                 {
                     throw new InvalidOperationException($"Function '@{functionReferenceArgument.Name}' has not been assigned.");
                 }
 
-                return await ResolveBlockArgumentAsync(block, expectedInputType, cancellationToken).ConfigureAwait(false);
+                return await ResolveBlockArgumentAsync(block, expectedInputType, executionContext, cancellationToken).ConfigureAwait(false);
 
             default:
                 throw new InvalidOperationException($"Unsupported command argument type '{argument.GetType().FullName}'.");
@@ -124,6 +152,7 @@ public sealed class XScripTHEngine : ICommandExecutor
     private async Task<ArgumentResolution> ResolveBlockArgumentAsync(
         CommandBlockArgument block,
         Type? expectedInputType,
+        IExecutionContext executionContext,
         CancellationToken cancellationToken)
     {
         if (expectedInputType is not null && IsBlockContainerExpected(expectedInputType))
@@ -131,7 +160,7 @@ public sealed class XScripTHEngine : ICommandExecutor
             return new ArgumentResolution(block, null);
         }
 
-        var output = await ExecuteAsync(block.Invocations, cancellationToken).ConfigureAwait(false);
+        var output = await ExecuteAsync(block.Invocations.Select(Task.FromResult), executionContext, cancellationToken).ConfigureAwait(false);
         if (output.Status == CommandStatus.Error)
         {
             return new ArgumentResolution(null, output);
@@ -139,6 +168,7 @@ public sealed class XScripTHEngine : ICommandExecutor
 
         return new ArgumentResolution(RequireSingleOutputValue(output, "Command block"), null);
     }
+
 
     private static object? RequireSingleOutputValue(ICommandOutput output, string source)
     {

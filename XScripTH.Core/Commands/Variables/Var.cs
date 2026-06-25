@@ -9,13 +9,6 @@ namespace XScripTH.Core.Commands.Variables;
 [CommandTypes([typeof(CommandVariableArgument), typeof(object)], [])]
 public sealed class Var : ICommand, ICompileTimePhase
 {
-    private readonly IVariableStore _variables;
-
-    public Var(IVariableStore variables)
-    {
-        ArgumentNullException.ThrowIfNull(variables);
-        _variables = variables;
-    }
 
 
     public async Task<ICommandOutput> ExecuteCompileTimeAsync(
@@ -49,7 +42,8 @@ public sealed class Var : ICommand, ICompileTimePhase
         }
 
         var target = (CommandVariableArgument)input.Values[0]!;
-        _variables.Set(target.Name, input.Values[1]);
+        var context = input.ExecutionContext ?? throw new InvalidOperationException("Execution context is required.");
+        context.SetVariable(target.Name, input.Values[1]);
         return Task.FromResult<ICommandOutput>(CommandOutput.Ok());
     }
 
@@ -65,7 +59,7 @@ public sealed class Var : ICommand, ICompileTimePhase
                 return variableArgument.VariableType;
 
             case CommandInvocationArgument invocationArgument:
-                var command = await invocationArgument.Invocation.CommandTask.WaitAsync(cancellationToken).ConfigureAwait(false)
+                var command = invocationArgument.Invocation.Command
                     ?? throw new InvalidOperationException("var requires its value expression to resolve to a command.");
                 return RequireSingleOutputType(
                     invocationArgument.Invocation.StaticOutputTypes ?? command.GetType().GetCustomAttribute<CommandTypesAttribute>()?.Outputs);

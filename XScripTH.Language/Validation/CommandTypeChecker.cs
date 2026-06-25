@@ -12,7 +12,7 @@ public sealed class CommandTypeChecker : ICommandTypeChecker
     public static CommandTypeChecker Default { get; } = new();
 
     public async Task<CommandTypeCheckResult> ValidateAsync(
-        IEnumerable<Task<ICommandInvocation>> invocations,
+        IEnumerable<ICommandInvocation> invocations,
         CancellationToken cancellationToken = default)
     {
         var validation = await ValidateProgramAsync(invocations, cancellationToken).ConfigureAwait(false);
@@ -33,7 +33,7 @@ public sealed class CommandTypeChecker : ICommandTypeChecker
     }
 
     public async Task EnsureValidAsync(
-        IEnumerable<Task<ICommandInvocation>> invocations,
+        IEnumerable<ICommandInvocation> invocations,
         CancellationToken cancellationToken = default)
     {
         var validation = await ValidateProgramAsync(invocations, cancellationToken).ConfigureAwait(false);
@@ -62,7 +62,7 @@ public sealed class CommandTypeChecker : ICommandTypeChecker
     }
 
     private static async Task<ProgramValidation> ValidateProgramAsync(
-        IEnumerable<Task<ICommandInvocation>> invocations,
+        IEnumerable<ICommandInvocation> invocations,
         CancellationToken cancellationToken)
     {
         ArgumentNullException.ThrowIfNull(invocations);
@@ -70,10 +70,9 @@ public sealed class CommandTypeChecker : ICommandTypeChecker
         var errors = new List<CommandTypeCheckError>();
         ICommand? firstInvalidCommand = null;
 
-        foreach (var invocationTask in invocations)
+        foreach (var invocation in invocations)
         {
             cancellationToken.ThrowIfCancellationRequested();
-            var invocation = await invocationTask.WaitAsync(cancellationToken).ConfigureAwait(false);
             var validation = await ValidateInvocationInternalAsync(invocation, Array.Empty<int>(), cancellationToken).ConfigureAwait(false);
             if (validation.Errors.Count > 0 && firstInvalidCommand is null)
             {
@@ -94,7 +93,7 @@ public sealed class CommandTypeChecker : ICommandTypeChecker
         ArgumentNullException.ThrowIfNull(invocation);
         cancellationToken.ThrowIfCancellationRequested();
 
-        var command = await invocation.CommandTask.WaitAsync(cancellationToken).ConfigureAwait(false)
+        var command = invocation.Command
             ?? throw new InvalidOperationException("Command invocation returned null command.");
         var commandTypes = command.GetType().GetCustomAttribute<CommandTypesAttribute>();
         var inputs = commandTypes?.Inputs;
@@ -320,7 +319,7 @@ public sealed class CommandTypeChecker : ICommandTypeChecker
         for (var index = 0; index < blockArgument.Invocations.Count; index++)
         {
             cancellationToken.ThrowIfCancellationRequested();
-            var blockInvocation = await blockArgument.Invocations[index].WaitAsync(cancellationToken).ConfigureAwait(false);
+            var blockInvocation = blockArgument.Invocations[index];
             var blockValidation = await ValidateInvocationInternalAsync(
                 blockInvocation,
                 AppendPath(path, index),

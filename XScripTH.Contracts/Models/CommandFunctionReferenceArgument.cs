@@ -4,7 +4,7 @@ namespace XScripTH.Contracts.Models;
 
 public sealed class CommandFunctionReferenceArgument : ICommandArgument
 {
-    public CommandFunctionReferenceArgument(string name, Type[] outputTypes, IFunctionStore functionStore)
+    public CommandFunctionReferenceArgument(string name, Type[] outputTypes)
     {
         if (string.IsNullOrWhiteSpace(name))
         {
@@ -12,16 +12,12 @@ public sealed class CommandFunctionReferenceArgument : ICommandArgument
         }
 
         ArgumentNullException.ThrowIfNull(outputTypes);
-        ArgumentNullException.ThrowIfNull(functionStore);
 
         Name = name[0] == '@' ? name[1..] : name;
         OutputTypes = outputTypes;
-        FunctionStore = functionStore;
     }
 
     public string Name { get; }
 
     public Type[] OutputTypes { get; }
-
-    public IFunctionStore FunctionStore { get; }
 }

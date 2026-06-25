@@ -1,3 +1,4 @@
+using System.Linq;
 using XScripTH.Contracts.Attributes;
 using XScripTH.Contracts.Interfaces;
 using XScripTH.Contracts.Models;
@@ -33,8 +34,11 @@ public sealed class IfCommand : ICommand
             throw new ArgumentException("if requires a command block as its second input value.", nameof(input));
         }
 
-        return condition
-            ? await _executor.ExecuteAsync(body.Invocations).ConfigureAwait(false)
-            : CommandOutput.Ok();
+        if (condition)
+        {
+            var context = input.ExecutionContext ?? new XScriptExecutionContext(_executor);
+            return await _executor.ExecuteAsync(body.Invocations.Select(Task.FromResult), context).ConfigureAwait(false);
+        }
+        return CommandOutput.Ok();
     }
 }

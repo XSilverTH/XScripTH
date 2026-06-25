@@ -1,3 +1,4 @@
+using System.Linq;
 using XScripTH.Contracts.Attributes;
 using XScripTH.Contracts.Enums;
 using XScripTH.Contracts.Interfaces;
@@ -33,11 +34,11 @@ public sealed class WhileCommand : ICommand
         {
             throw new ArgumentException("while requires a body command block as its second input value.", nameof(input));
         }
-
+        var context = input.ExecutionContext ?? new XScriptExecutionContext(_executor);
         ICommandOutput? lastBodyOutput = null;
         while (true)
         {
-            var conditionOutput = await _executor.ExecuteAsync(condition.Invocations).ConfigureAwait(false);
+            var conditionOutput = await _executor.ExecuteAsync(condition.Invocations.Select(Task.FromResult), context).ConfigureAwait(false);
             if (conditionOutput.Status == CommandStatus.Error)
             {
                 return conditionOutput;
@@ -53,7 +54,7 @@ public sealed class WhileCommand : ICommand
                 return lastBodyOutput ?? CommandOutput.Ok();
             }
 
-            lastBodyOutput = await _executor.ExecuteAsync(body.Invocations).ConfigureAwait(false);
+            lastBodyOutput = await _executor.ExecuteAsync(body.Invocations.Select(Task.FromResult), context).ConfigureAwait(false);
             if (lastBodyOutput.Status == CommandStatus.Error)
             {
                 return lastBodyOutput;
