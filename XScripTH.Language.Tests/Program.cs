@@ -118,7 +118,7 @@ static async Task TypeCheckerAcceptsRecursiveCommandInputsWithoutExecutingThem()
     CommandCounts.Reset();
     var invocation = Invoke(new LengthCommand(), Nested(Invoke(new TextCommand())));
 
-    await CommandTypeChecker.Default.EnsureValidAsync(Program(invocation).Select(t => t.Result));
+    await CommandTypeChecker.Default.EnsureValidAsync(Program(invocation));
 
     AssertEqual(0, CommandCounts.TextCount);
     AssertEqual(0, CommandCounts.LengthCount);
@@ -130,7 +130,7 @@ static async Task TypeCheckerRejectsTopLevelOutputChaining()
     var exception = await AssertThrowsAsync<CommandTypeCheckException>(async () =>
         await CommandTypeChecker.Default.EnsureValidAsync(Program(
             Invoke(new TextCommand()),
-            invocation).Select(t => t.Result)));
+            invocation)));
 
     AssertEqual(typeof(LengthCommand), exception.CommandType);
     AssertEqual(1, exception.Errors.Count);
@@ -145,7 +145,7 @@ static async Task TypeCheckerRejectsNestedCommandOutputMismatch()
     var invocation = Invoke(new LengthCommand(), Nested(Invoke(new NumberCommand())));
 
     var exception = await AssertThrowsAsync<CommandTypeCheckException>(async () =>
-        await CommandTypeChecker.Default.EnsureValidAsync(Program(invocation).Select(t => t.Result)));
+        await CommandTypeChecker.Default.EnsureValidAsync(Program(invocation)));
 
     AssertEqual(1, exception.Errors.Count);
     AssertPath([0], exception.Errors[0].Path);
@@ -165,7 +165,7 @@ static async Task TypeCheckerSupportsRecursiveNestedCommandInputs()
             Nested(Invoke(new TextCommand())),
             new CommandValueArgument(">"))));
 
-    await CommandTypeChecker.Default.EnsureValidAsync(Program(invocation).Select(t => t.Result));
+    await CommandTypeChecker.Default.EnsureValidAsync(Program(invocation));
 }
 
 static async Task CommaSeparatedNestedCommandAmongLiterals()
@@ -189,7 +189,7 @@ static async Task DoubleSemicolonRunsWithoutWaiting()
     CommandCounts.Reset();
 
     var registry = CommandRegistry.FromAssemblies(typeof(TextCommand).Assembly);
-    var compiler = new XScriptCompiler(registry, executor: new XScripTHEngine());
+    var compiler = new XScriptCompiler(registry);
     var invocationTasks = await compiler.CompileAsync("block;; mark;");
     var engine = new XScripTHEngine();
 
@@ -504,10 +504,10 @@ static async Task BlockVariableScopeDoesNotLeakDeclarations()
 static XScriptCompiler CreateControlFlowCompiler(XScripTHEngine engine)
 {
     var registry = CommandRegistry.FromAssemblies(typeof(ReturnCommand).Assembly, typeof(TextCommand).Assembly);
-    return new XScriptCompiler(registry, executor: engine);
+    return new XScriptCompiler(registry);
 }
 
-static List<Task<ICommandInvocation>> Program(params ICommandInvocation[] invocations) => invocations.Select(Task.FromResult).ToList();
+static List<ICommandInvocation> Program(params ICommandInvocation[] invocations) => invocations.ToList();
 
 static CommandInvocationArgument Nested(ICommandInvocation invocation) => new(invocation);
 
@@ -550,42 +550,6 @@ static void AssertPath(IReadOnlyList<int> expected, IReadOnlyList<int> actual)
 
 static string FormatPath(IReadOnlyList<int> path) => string.Join('.', path.Select(index => $"[{index}]"));
 
-public static class TestExecutorExtensions
-{
-    public static Task<IReadOnlyList<ICommandOutput>> ExecuteAllAsync(
-        this ICommandExecutor executor,
-        IEnumerable<Task<ICommandInvocation>> commands,
-        CancellationToken cancellationToken = default)
-    {
-        return executor.ExecuteAllAsync(commands.Select(t => t.Result), cancellationToken);
-    }
-
-    public static Task<IReadOnlyList<ICommandOutput>> ExecuteAllAsync(
-        this ICommandExecutor executor,
-        IEnumerable<Task<ICommandInvocation>> commands,
-        IExecutionContext executionContext,
-        CancellationToken cancellationToken = default)
-    {
-        return executor.ExecuteAllAsync(commands.Select(t => t.Result), executionContext, cancellationToken);
-    }
-
-    public static Task<ICommandOutput> ExecuteAsync(
-        this ICommandExecutor executor,
-        IEnumerable<Task<ICommandInvocation>> commands,
-        CancellationToken cancellationToken = default)
-    {
-        return executor.ExecuteAsync(commands.Select(t => t.Result), cancellationToken);
-    }
-
-    public static Task<ICommandOutput> ExecuteAsync(
-        this ICommandExecutor executor,
-        IEnumerable<Task<ICommandInvocation>> commands,
-        IExecutionContext executionContext,
-        CancellationToken cancellationToken = default)
-    {
-        return executor.ExecuteAsync(commands.Select(t => t.Result), executionContext, cancellationToken);
-    }
-}
 
 public static class CapturedValues
 {

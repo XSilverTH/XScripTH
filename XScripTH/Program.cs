@@ -11,8 +11,8 @@ if (args.Length == 0)
 var source = string.Join(' ', args);
 var engine = new XScripTHEngine();
 var registry = CommandRegistry.FromAssemblies(typeof(Print).Assembly);
-var compiler = new XScriptCompiler(registry, executor: engine);
+var compiler = new XScriptCompiler(registry);
 var invocations = await compiler.CompileAsync(source);
-var output = await engine.ExecuteAsync(invocations.Select(t => t.Result));
+var output = await engine.ExecuteAsync(invocations);
 
 return (int)output.Status;

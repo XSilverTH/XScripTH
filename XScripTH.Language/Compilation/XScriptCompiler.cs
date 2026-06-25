@@ -18,96 +18,62 @@ public sealed class XScriptCompiler
     private readonly ICommandRegistry _commandRegistry;
     private readonly ICommandTypeChecker _typeChecker;
     private readonly XScriptParser _parser;
-    private readonly ICommandExecutor? _executor;
 
     public XScriptCompiler(
         ICommandRegistry commandRegistry,
         ICommandTypeChecker? typeChecker = null,
-        XScriptParser? parser = null,
-        ICommandExecutor? executor = null)
+        XScriptParser? parser = null)
     {
         ArgumentNullException.ThrowIfNull(commandRegistry);
 
         _commandRegistry = commandRegistry;
         _typeChecker = typeChecker ?? CommandTypeChecker.Default;
         _parser = parser ?? new XScriptParser();
-        _executor = executor;
-        if (commandRegistry is CommandRegistry registry)
-        {
-            if (executor is not null && !registry.TryGetService<ICommandExecutor>(out _))
-            {
-                registry.RegisterService<ICommandExecutor>(executor);
-            }
-        }
     }
 
-    public async Task<IReadOnlyList<Task<ICommandInvocation>>> CompileAsync(
+    public async Task<IReadOnlyList<ICommandInvocation>> CompileAsync(
         string source,
         CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(source);
-        var ast = _parser.Parse(source);
+        var ast = Parse(source);
         return await CompileAsync(ast, cancellationToken).ConfigureAwait(false);
     }
 
-    public async Task<IReadOnlyList<Task<ICommandInvocation>>> CompileAsync(
+    public async Task<IReadOnlyList<ICommandInvocation>> CompileAsync(
         XScriptProgramAst ast,
         CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(ast);
         var context = new CompilationContext();
 
-        var lowered = await LowerCommandListAsync(ast.Commands, context, cancellationToken).ConfigureAwait(false);
+        var bound = await BindProgramAsync(ast.Commands, context, cancellationToken).ConfigureAwait(false);
 
-        // Validate type safety before execution so nested outputs match parent inputs.
-        var invocationsToValidate = lowered.Select(l => l.Invocation).ToList();
-        await _typeChecker.EnsureValidAsync(invocationsToValidate, cancellationToken).ConfigureAwait(false);
+        await TypeCheckAsync(bound, cancellationToken).ConfigureAwait(false);
 
-        var result = new List<Task<ICommandInvocation>>();
-        foreach (var (invocation, terminator, _) in lowered)
-        {
-            result.Add(await ApplyTerminatorAsync(invocation, terminator).ConfigureAwait(false));
-        }
-
-        return result;
+        return EmitProgram(bound);
     }
 
-    private async Task<List<(ICommandInvocation Invocation, XScriptCommandTerminator Terminator, Type[] OutputTypes)>> LowerCommandListAsync(
+    private XScriptProgramAst Parse(string source)
+    {
+        return _parser.Parse(source);
+    }
+
+    private async Task<BoundProgram> BindProgramAsync(
         IReadOnlyList<XScriptCommandAst> commands,
         ICompilationContext context,
         CancellationToken cancellationToken)
     {
-        var lowered = new List<(ICommandInvocation Invocation, XScriptCommandTerminator Terminator, Type[] OutputTypes)>();
+        var boundCommands = new List<BoundCommand>();
         foreach (var cmdAst in commands)
         {
-            var loweredCommand = await LowerCommandAsync(cmdAst, context, cancellationToken).ConfigureAwait(false);
-            if (loweredCommand.RuntimeInvocation is not null)
-            {
-                lowered.Add((loweredCommand.RuntimeInvocation, cmdAst.Terminator, loweredCommand.OutputTypes));
-            }
+            var boundCommand = await BindCommandAsync(cmdAst, context, cancellationToken).ConfigureAwait(false);
+            boundCommands.Add(boundCommand);
         }
-
-        return lowered;
+        return new BoundProgram(boundCommands);
     }
 
-    private Task<Task<ICommandInvocation>> ApplyTerminatorAsync(
-        ICommandInvocation invocation,
-        XScriptCommandTerminator terminator)
-    {
-        if (terminator == XScriptCommandTerminator.Await)
-        {
-            return Task.FromResult(Task.FromResult(invocation));
-        }
-
-        ICommand fireAndForgetCommand = new FireAndForgetCommand(invocation);
-        ICommandInvocation fireAndForgetInvocation = new CommandInvocation(
-            fireAndForgetCommand,
-            Array.Empty<ICommandArgument>()
-        );
-        return Task.FromResult(Task.FromResult(fireAndForgetInvocation));
-    }
-
-    private async Task<LoweredCommand> LowerCommandAsync(
+    private async Task<BoundCommand> BindCommandAsync(
         XScriptCommandAst commandAst,
         ICompilationContext context,
         CancellationToken cancellationToken)
@@ -147,7 +113,7 @@ public sealed class XScriptCompiler
         outputTypes = GetInvocationOutputTypes(invocation, command);
         if (phase is null)
         {
-            return new LoweredCommand(invocation, null, commandAst.Name, outputTypes);
+            return new BoundCommand(invocation, null, commandAst.Terminator, commandAst.Name, outputTypes);
         }
 
         await _typeChecker.EnsureInvocationValidAsync(invocation, cancellationToken).ConfigureAwait(false);
@@ -171,8 +137,8 @@ public sealed class XScriptCompiler
         }
 
         return emitsRuntimeInvocation
-            ? new LoweredCommand(invocation, null, commandAst.Name, outputTypes)
-            : new LoweredCommand(null, output, commandAst.Name, outputTypes);
+            ? new BoundCommand(invocation, null, commandAst.Terminator, commandAst.Name, outputTypes)
+            : new BoundCommand(null, output, commandAst.Terminator, commandAst.Name, outputTypes);
     }
 
     private async Task<ICommandArgument> LowerArgumentAsync(
@@ -216,19 +182,18 @@ public sealed class XScriptCompiler
                 if (expectedInputType is not null && IsBlockContainerExpected(expectedInputType))
                 {
                     var childContext = context.CreateChildScope();
-                    var nested = await LowerCommandAsync(commandArg.Command, childContext, cancellationToken).ConfigureAwait(false);
+                    var nested = await BindCommandAsync(commandArg.Command, childContext, cancellationToken).ConfigureAwait(false);
                     if (nested.RuntimeInvocation is null)
                     {
                         throw new InvalidOperationException($"Command '{nested.Name}' cannot be used as a deferred block because it has no runtime invocation.");
                     }
 
-                    var invocationTaskTask = await ApplyTerminatorAsync(nested.RuntimeInvocation, commandArg.Command.Terminator).ConfigureAwait(false);
-                    var invocation = await invocationTaskTask.ConfigureAwait(false);
+                    var invocation = EmitCommand(nested.RuntimeInvocation, commandArg.Command.Terminator);
                     return new CommandBlockArgument([invocation], nested.OutputTypes);
                 }
                 else
                 {
-                    var nested = await LowerCommandAsync(commandArg.Command, context, cancellationToken).ConfigureAwait(false);
+                    var nested = await BindCommandAsync(commandArg.Command, context, cancellationToken).ConfigureAwait(false);
                     if (nested.CompileTimeOutput is not null)
                     {
                         if (nested.CompileTimeOutput.Status != CommandStatus.Ok ||
@@ -252,17 +217,45 @@ public sealed class XScriptCompiler
         ICompilationContext context,
         CancellationToken cancellationToken)
     {
-        var lowered = await LowerCommandListAsync(blockAst.Commands, context, cancellationToken).ConfigureAwait(false);
-        var invocations = new List<ICommandInvocation>(lowered.Count);
-        foreach (var (invocation, terminator, _) in lowered)
+        var boundProgram = await BindProgramAsync(blockAst.Commands, context, cancellationToken).ConfigureAwait(false);
+        var invocations = EmitProgram(boundProgram);
+
+        var outputTypes = boundProgram.Commands.Count == 0 
+            ? Array.Empty<Type>() 
+            : boundProgram.Commands[^1].OutputTypes;
+        return new CommandBlockArgument(invocations, outputTypes);
+    }
+
+    private async Task TypeCheckAsync(BoundProgram bound, CancellationToken cancellationToken)
+    {
+        await _typeChecker.EnsureValidAsync(bound.RuntimeInvocations, cancellationToken).ConfigureAwait(false);
+    }
+
+    private IReadOnlyList<ICommandInvocation> EmitProgram(BoundProgram bound)
+    {
+        var result = new List<ICommandInvocation>();
+        foreach (var cmd in bound.Commands)
         {
-            var invocationTaskTask = await ApplyTerminatorAsync(invocation, terminator).ConfigureAwait(false);
-            var commandInvocation = await invocationTaskTask.ConfigureAwait(false);
-            invocations.Add(commandInvocation);
+            if (cmd.RuntimeInvocation is not null)
+            {
+                result.Add(EmitCommand(cmd.RuntimeInvocation, cmd.Terminator));
+            }
+        }
+        return result;
+    }
+
+    private ICommandInvocation EmitCommand(ICommandInvocation invocation, XScriptCommandTerminator terminator)
+    {
+        if (terminator == XScriptCommandTerminator.Await)
+        {
+            return invocation;
         }
 
-        var outputTypes = lowered.Count == 0 ? Array.Empty<Type>() : lowered[^1].OutputTypes;
-        return new CommandBlockArgument(invocations, outputTypes);
+        ICommand fireAndForgetCommand = new FireAndForgetCommand(invocation);
+        return new CommandInvocation(
+            fireAndForgetCommand,
+            Array.Empty<ICommandArgument>()
+        );
     }
 
     private Type[] GetInvocationOutputTypes(ICommandInvocation invocation, ICommand command) =>
@@ -290,10 +283,16 @@ public sealed class XScriptCompiler
         return GetInvocationOutputTypes(invocation, command);
     }
 
+    private sealed record BoundProgram(IReadOnlyList<BoundCommand> Commands)
+    {
+        public IReadOnlyList<ICommandInvocation> RuntimeInvocations =>
+            Commands.Select(c => c.RuntimeInvocation).Where(i => i != null).Cast<ICommandInvocation>().ToList();
+    }
 
-    private sealed record LoweredCommand(
+    private sealed record BoundCommand(
         ICommandInvocation? RuntimeInvocation,
         ICommandOutput? CompileTimeOutput,
+        XScriptCommandTerminator Terminator,
         string Name,
         Type[] OutputTypes);
 }
