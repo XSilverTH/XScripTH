@@ -1,3 +1,4 @@
+using Microsoft.Extensions.DependencyInjection;
 using System.Reflection;
 using XScripTH.Contracts.Attributes;
 using XScripTH.Contracts.Interfaces;
@@ -7,13 +8,15 @@ namespace XScripTH.Language.Compilation;
 public sealed class CommandRegistry : ICommandRegistry, ICommandRegistrar
 {
     private readonly Dictionary<string, Func<ICommand>> _factories = new(StringComparer.Ordinal);
-    private readonly Dictionary<Type, object> _services = new();
+    private readonly IServiceProvider _serviceProvider;
 
     private CommandRegistry()
     {
-        RegisterService(typeof(CommandRegistry), this);
-        RegisterService(typeof(ICommandRegistry), this);
-        RegisterService(typeof(ICommandRegistrar), this);
+        var services = new ServiceCollection();
+        services.AddSingleton(this);
+        services.AddSingleton<ICommandRegistry>(this);
+        services.AddSingleton<ICommandRegistrar>(this);
+        _serviceProvider = services.BuildServiceProvider();
     }
 
     public static CommandRegistry FromAssemblies(params Assembly[] assemblies)
@@ -36,43 +39,6 @@ public sealed class CommandRegistry : ICommandRegistry, ICommandRegistrar
         return registry;
     }
 
-    public void RegisterService<TService>(TService service) where TService : notnull =>
-        RegisterService(typeof(TService), service);
-
-    private void RegisterService(Type serviceType, object service)
-    {
-        ArgumentNullException.ThrowIfNull(serviceType);
-        ArgumentNullException.ThrowIfNull(service);
-
-        if (!serviceType.IsInstanceOfType(service))
-            throw new ArgumentException($"Service must be an instance of '{serviceType.FullName}'.", nameof(service));
-
-        if (!_services.TryAdd(serviceType, service))
-            throw new InvalidOperationException(
-                $"A service of type '{serviceType.FullName}' has already been registered.");
-    }
-
-    private bool TryGetService<TService>(out TService? service) where TService : class
-    {
-        if (_services.TryGetValue(typeof(TService), out var value) && value is TService typedValue)
-        {
-            service = typedValue;
-            return true;
-        }
-
-        service = null;
-        return false;
-    }
-
-    public TService GetRequiredService<TService>() where TService : class
-    {
-        if (TryGetService<TService>(out var service))
-            return service!;
-
-        throw new InvalidOperationException(
-            $"A service of type '{typeof(TService).FullName}' has not been registered.");
-    }
-
     public void RegisterAssembly(Assembly assembly)
     {
         ArgumentNullException.ThrowIfNull(assembly);
@@ -85,17 +51,7 @@ public sealed class CommandRegistry : ICommandRegistry, ICommandRegistrar
             var commandAttr = type.GetCustomAttribute<CommandAttribute>();
             var name = commandAttr?.Name ?? type.Name;
 
-            Register(name, () =>
-            {
-                var constructor = SelectResolvableConstructor(type)
-                                  ?? throw new InvalidOperationException(
-                                      $"Command type '{type.FullName}' has no resolvable constructor.");
-                var resolvedServices = constructor
-                    .GetParameters()
-                    .Select(parameter => _services[parameter.ParameterType])
-                    .ToArray();
-                return (ICommand)constructor.Invoke(resolvedServices);
-            });
+            Register(name, () => (ICommand)ActivatorUtilities.CreateInstance(_serviceProvider, type));
         }
     }
 
@@ -120,26 +76,5 @@ public sealed class CommandRegistry : ICommandRegistry, ICommandRegistrar
 
         command = null;
         return false;
-    }
-
-    private ConstructorInfo? SelectResolvableConstructor(Type type)
-    {
-        var constructors = type
-            .GetConstructors(BindingFlags.Public | BindingFlags.Instance)
-            .Where(constructor =>
-                constructor.GetParameters().All(parameter => _services.ContainsKey(parameter.ParameterType)))
-            .OrderByDescending(constructor => constructor.GetParameters().Length)
-            .ToArray();
-
-        if (constructors.Length == 0)
-            return null;
-
-        var selected = constructors[0];
-        if (constructors.Length > 1 &&
-            constructors[1].GetParameters().Length == selected.GetParameters().Length)
-            throw new InvalidOperationException(
-                $"Command type '{type.FullName}' has multiple resolvable constructors.");
-
-        return selected;
     }
 }
