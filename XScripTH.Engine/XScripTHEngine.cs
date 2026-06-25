@@ -54,42 +54,14 @@ public sealed class XScripTHEngine : ICommandExecutor
         for (var index = 0; index < invocation.Arguments.Count; index++)
         {
             cancellationToken.ThrowIfCancellationRequested();
-            var argument = invocation.Arguments[index];
             var expectedInputType = inputs is not null && index < inputs.Length ? inputs[index] : null;
-            switch (argument)
+            var resolved = await ResolveArgumentAsync(invocation.Arguments[index], expectedInputType, cancellationToken).ConfigureAwait(false);
+            if (resolved.ErrorOutput is not null)
             {
-                case CommandValueArgument valueArgument:
-                    values.Add(valueArgument.Value);
-                    break;
-
-                case CommandVariableArgument variableArgument:
-                    if (expectedInputType?.IsAssignableFrom(typeof(CommandVariableArgument)) == true)
-                    {
-                        values.Add(variableArgument);
-                        break;
-                    }
-
-                    if (!variableArgument.VariableStore.TryGet(variableArgument.Name, out var value))
-                    {
-                        throw new InvalidOperationException($"Variable '${variableArgument.Name}' has not been assigned.");
-                    }
-
-                    values.Add(value);
-                    break;
-
-                case CommandInvocationArgument invocationArgument:
-                    var nestedOutput = await ExecuteInvocationAsync(invocationArgument.Invocation, cancellationToken).ConfigureAwait(false);
-                    if (nestedOutput.Status == CommandStatus.Error)
-                    {
-                        return nestedOutput;
-                    }
-
-                    values.Add(nestedOutput.Values![0]);
-                    break;
-
-                default:
-                    throw new InvalidOperationException($"Unsupported command argument type '{argument.GetType().FullName}'.");
+                return resolved.ErrorOutput;
             }
+
+            values.Add(resolved.Value);
         }
 
         var input = new CommandInput(values);
@@ -100,4 +72,86 @@ public sealed class XScripTHEngine : ICommandExecutor
 
         return output;
     }
+
+    private async Task<ArgumentResolution> ResolveArgumentAsync(
+        ICommandArgument argument,
+        Type? expectedInputType,
+        CancellationToken cancellationToken)
+    {
+        switch (argument)
+        {
+            case CommandValueArgument valueArgument:
+                return new ArgumentResolution(valueArgument.Value, null);
+
+            case CommandVariableArgument variableArgument:
+                if (expectedInputType?.IsAssignableFrom(typeof(CommandVariableArgument)) == true)
+                {
+                    return new ArgumentResolution(variableArgument, null);
+                }
+
+                if (!variableArgument.VariableStore.TryGet(variableArgument.Name, out var value))
+                {
+                    throw new InvalidOperationException($"Variable '${variableArgument.Name}' has not been assigned.");
+                }
+
+                return new ArgumentResolution(value, null);
+
+            case CommandInvocationArgument invocationArgument:
+                var nestedOutput = await ExecuteInvocationAsync(invocationArgument.Invocation, cancellationToken).ConfigureAwait(false);
+                if (nestedOutput.Status == CommandStatus.Error)
+                {
+                    return new ArgumentResolution(null, nestedOutput);
+                }
+
+                return new ArgumentResolution(RequireSingleOutputValue(nestedOutput, "Nested command"), null);
+
+            case CommandBlockArgument blockArgument:
+                return await ResolveBlockArgumentAsync(blockArgument, expectedInputType, cancellationToken).ConfigureAwait(false);
+
+            case CommandFunctionReferenceArgument functionReferenceArgument:
+                if (!functionReferenceArgument.FunctionStore.TryGet(functionReferenceArgument.Name, out var block) || block is null)
+                {
+                    throw new InvalidOperationException($"Function '@{functionReferenceArgument.Name}' has not been assigned.");
+                }
+
+                return await ResolveBlockArgumentAsync(block, expectedInputType, cancellationToken).ConfigureAwait(false);
+
+            default:
+                throw new InvalidOperationException($"Unsupported command argument type '{argument.GetType().FullName}'.");
+        }
+    }
+
+    private async Task<ArgumentResolution> ResolveBlockArgumentAsync(
+        CommandBlockArgument block,
+        Type? expectedInputType,
+        CancellationToken cancellationToken)
+    {
+        if (expectedInputType is not null && IsBlockContainerExpected(expectedInputType))
+        {
+            return new ArgumentResolution(block, null);
+        }
+
+        var output = await ExecuteAsync(block.Invocations, cancellationToken).ConfigureAwait(false);
+        if (output.Status == CommandStatus.Error)
+        {
+            return new ArgumentResolution(null, output);
+        }
+
+        return new ArgumentResolution(RequireSingleOutputValue(output, "Command block"), null);
+    }
+
+    private static object? RequireSingleOutputValue(ICommandOutput output, string source)
+    {
+        if (output.Values is not { Count: 1 })
+        {
+            throw new InvalidOperationException($"{source} must produce exactly one output value.");
+        }
+
+        return output.Values[0];
+    }
+
+    private static bool IsBlockContainerExpected(Type expectedInputType) =>
+        expectedInputType != typeof(object) && expectedInputType.IsAssignableFrom(typeof(CommandBlockArgument));
+
+    private sealed record ArgumentResolution(object? Value, ICommandOutput? ErrorOutput);
 }
