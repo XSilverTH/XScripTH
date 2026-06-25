@@ -5,6 +5,7 @@ namespace XScripTH.Language;
 public sealed class CompileTimeSymbolTable : ICompileTimeSymbolTable
 {
     private readonly Dictionary<string, Type> _variables = new(StringComparer.Ordinal);
+    private readonly Dictionary<string, Type[]> _functions = new(StringComparer.Ordinal);
 
     public void DeclareVariable(string name, Type type)
     {
@@ -34,6 +35,32 @@ public sealed class CompileTimeSymbolTable : ICompileTimeSymbolTable
         return found;
     }
 
+    public void DeclareFunction(string name, Type[] outputTypes)
+    {
+        var normalizedName = NormalizeFunctionName(name);
+        ArgumentNullException.ThrowIfNull(outputTypes);
+
+        if (!_functions.TryGetValue(normalizedName, out var existingOutputTypes))
+        {
+            _functions.Add(normalizedName, outputTypes);
+            return;
+        }
+
+        if (existingOutputTypes.SequenceEqual(outputTypes))
+        {
+            return;
+        }
+
+        throw new InvalidOperationException(
+            $"Function '@{normalizedName}' is already declared with outputs '{FormatTypes(existingOutputTypes)}' and cannot be redeclared with outputs '{FormatTypes(outputTypes)}'.");
+    }
+
+    public bool TryGetFunctionOutputTypes(string name, out Type[]? outputTypes)
+    {
+        var normalizedName = NormalizeFunctionName(name);
+        return _functions.TryGetValue(normalizedName, out outputTypes);
+    }
+
     private static string NormalizeName(string name)
     {
         if (string.IsNullOrWhiteSpace(name))
@@ -43,4 +70,17 @@ public sealed class CompileTimeSymbolTable : ICompileTimeSymbolTable
 
         return name[0] == '$' ? name[1..] : name;
     }
+
+    private static string NormalizeFunctionName(string name)
+    {
+        if (string.IsNullOrWhiteSpace(name))
+        {
+            throw new ArgumentException("Function name must be non-empty.", nameof(name));
+        }
+
+        return name[0] == '@' ? name[1..] : name;
+    }
+
+    private static string FormatTypes(Type[] types) =>
+        string.Join(", ", types.Select(type => type.FullName));
 }

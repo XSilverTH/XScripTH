@@ -65,43 +65,58 @@ public sealed class XScriptCompiler
         CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(ast);
-
         var context = new CompilationContext();
-        var lowered = new List<(ICommandInvocation Invocation, XScriptCommandTerminator Terminator)>();
-        foreach (var cmdAst in ast.Commands)
-        {
-            var loweredCommand = await LowerCommandAsync(cmdAst, context, cancellationToken).ConfigureAwait(false);
-            if (loweredCommand.RuntimeInvocation is not null)
-            {
-                lowered.Add((loweredCommand.RuntimeInvocation, cmdAst.Terminator));
-            }
-        }
+
+        var lowered = await LowerCommandListAsync(ast.Commands, context, cancellationToken).ConfigureAwait(false);
 
         // Validate type safety before execution so nested outputs match parent inputs.
         var invocationsToValidate = lowered.Select(l => Task.FromResult(l.Invocation)).ToList();
         await _typeChecker.EnsureValidAsync(invocationsToValidate, cancellationToken).ConfigureAwait(false);
 
         var result = new List<Task<ICommandInvocation>>();
-        foreach (var (invocation, terminator) in lowered)
+        foreach (var (invocation, terminator, _) in lowered)
         {
-            if (terminator == XScriptCommandTerminator.Await)
-            {
-                result.Add(Task.FromResult(invocation));
-            }
-            else // FireAndForget
-            {
-                var executor = _executor
-                    ?? throw new InvalidOperationException("Fire-and-forget commands require an ICommandExecutor.");
-                ICommand fireAndForgetCommand = new FireAndForgetCommand(invocation, executor);
-                ICommandInvocation fireAndForgetInvocation = new CommandInvocation(
-                    Task.FromResult(fireAndForgetCommand),
-                    Array.Empty<ICommandArgument>()
-                );
-                result.Add(Task.FromResult(fireAndForgetInvocation));
-            }
+            result.Add(await ApplyTerminatorAsync(invocation, terminator).ConfigureAwait(false));
         }
 
         return result;
+    }
+
+    private async Task<List<(ICommandInvocation Invocation, XScriptCommandTerminator Terminator, Type[] OutputTypes)>> LowerCommandListAsync(
+        IReadOnlyList<XScriptCommandAst> commands,
+        ICompilationContext context,
+        CancellationToken cancellationToken)
+    {
+        var lowered = new List<(ICommandInvocation Invocation, XScriptCommandTerminator Terminator, Type[] OutputTypes)>();
+        foreach (var cmdAst in commands)
+        {
+            var loweredCommand = await LowerCommandAsync(cmdAst, context, cancellationToken).ConfigureAwait(false);
+            if (loweredCommand.RuntimeInvocation is not null)
+            {
+                lowered.Add((loweredCommand.RuntimeInvocation, cmdAst.Terminator, loweredCommand.OutputTypes));
+            }
+        }
+
+        return lowered;
+    }
+
+    private Task<Task<ICommandInvocation>> ApplyTerminatorAsync(
+        ICommandInvocation invocation,
+        XScriptCommandTerminator terminator)
+    {
+        if (terminator == XScriptCommandTerminator.Await)
+        {
+            return Task.FromResult(Task.FromResult(invocation));
+        }
+
+        var executor = _executor
+            ?? throw new InvalidOperationException("Fire-and-forget commands require an ICommandExecutor.");
+        ICommand fireAndForgetCommand = new FireAndForgetCommand(invocation, executor);
+        ICommandInvocation fireAndForgetInvocation = new CommandInvocation(
+            Task.FromResult(fireAndForgetCommand),
+            Array.Empty<ICommandArgument>()
+        );
+        return Task.FromResult(Task.FromResult(fireAndForgetInvocation));
     }
 
     private async Task<LoweredCommand> LowerCommandAsync(
@@ -131,10 +146,20 @@ public sealed class XScriptCompiler
                 cancellationToken).ConfigureAwait(false));
         }
 
-        var invocation = new CommandInvocation(Task.FromResult(command), arguments);
+        var outputTypes = commandTypes?.Outputs ?? Array.Empty<Type>();
+        var staticOutputTypes = commandAst.Name == "return"
+            ? commandAst.Arguments.Count > 0 ? GetArgumentOutputTypes(arguments[0]) : Array.Empty<Type>()
+            : null;
+        if (staticOutputTypes is { Length: 1 })
+        {
+            staticOutputTypes = [staticOutputTypes[0]];
+        }
+
+        var invocation = new CommandInvocation(Task.FromResult(command), arguments, staticOutputTypes);
+        outputTypes = GetInvocationOutputTypes(invocation, command);
         if (phase is null)
         {
-            return new LoweredCommand(invocation, null, commandAst.Name);
+            return new LoweredCommand(invocation, null, commandAst.Name, outputTypes);
         }
 
         await _typeChecker.EnsureInvocationValidAsync(invocation, cancellationToken).ConfigureAwait(false);
@@ -158,8 +183,8 @@ public sealed class XScriptCompiler
         }
 
         return emitsRuntimeInvocation
-            ? new LoweredCommand(invocation, null, commandAst.Name)
-            : new LoweredCommand(null, output, commandAst.Name);
+            ? new LoweredCommand(invocation, null, commandAst.Name, outputTypes)
+            : new LoweredCommand(null, output, commandAst.Name, outputTypes);
     }
 
     private async Task<ICommandArgument> LowerArgumentAsync(
@@ -188,8 +213,30 @@ public sealed class XScriptCompiler
 
                 throw new XScriptVariableResolutionException(variableArg.Name);
 
+            case XScriptBlockArgumentAst blockArg:
+                return await LowerBlockArgumentAsync(blockArg, context, cancellationToken).ConfigureAwait(false);
+
+            case XScriptFunctionReferenceArgumentAst functionArg:
+                if (context.Symbols.TryGetFunctionOutputTypes(functionArg.Name, out var outputTypes))
+                {
+                    return new CommandFunctionReferenceArgument(functionArg.Name, outputTypes!, _functionStore);
+                }
+
+                throw new XScriptFunctionResolutionException(functionArg.Name);
+
             case XScriptCommandArgumentAst commandArg:
                 var nested = await LowerCommandAsync(commandArg.Command, context, cancellationToken).ConfigureAwait(false);
+                if (expectedInputType is not null && IsBlockContainerExpected(expectedInputType))
+                {
+                    if (nested.RuntimeInvocation is null)
+                    {
+                        throw new InvalidOperationException($"Command '{nested.Name}' cannot be used as a deferred block because it has no runtime invocation.");
+                    }
+
+                    var invocationTask = await ApplyTerminatorAsync(nested.RuntimeInvocation, commandArg.Command.Terminator).ConfigureAwait(false);
+                    return new CommandBlockArgument([invocationTask], nested.OutputTypes);
+                }
+
                 if (nested.CompileTimeOutput is not null)
                 {
                     if (nested.CompileTimeOutput.Status != CommandStatus.Ok ||
@@ -208,9 +255,51 @@ public sealed class XScriptCompiler
         }
     }
 
+    private async Task<CommandBlockArgument> LowerBlockArgumentAsync(
+        XScriptBlockArgumentAst blockAst,
+        ICompilationContext context,
+        CancellationToken cancellationToken)
+    {
+        var lowered = await LowerCommandListAsync(blockAst.Commands, context, cancellationToken).ConfigureAwait(false);
+        var invocations = new List<Task<ICommandInvocation>>(lowered.Count);
+        foreach (var (invocation, terminator, _) in lowered)
+        {
+            invocations.Add(await ApplyTerminatorAsync(invocation, terminator).ConfigureAwait(false));
+        }
+
+        var outputTypes = lowered.Count == 0 ? Array.Empty<Type>() : lowered[^1].OutputTypes;
+        return new CommandBlockArgument(invocations, outputTypes);
+    }
+
+    private Type[] GetInvocationOutputTypes(ICommandInvocation invocation, ICommand command) =>
+        invocation.StaticOutputTypes ?? command.GetType().GetCustomAttribute<CommandTypesAttribute>()?.Outputs ?? Array.Empty<Type>();
+
+    private static bool IsBlockContainerExpected(Type expectedInputType) =>
+        expectedInputType != typeof(object) && expectedInputType.IsAssignableFrom(typeof(CommandBlockArgument));
+
+    private Type[] GetArgumentOutputTypes(ICommandArgument argument)
+    {
+        return argument switch
+        {
+            CommandValueArgument valueArgument => [valueArgument.Value?.GetType() ?? typeof(object)],
+            CommandVariableArgument variableArgument => [variableArgument.VariableType],
+            CommandInvocationArgument invocationArgument => GetNestedInvocationOutputTypes(invocationArgument.Invocation),
+            CommandBlockArgument blockArgument => blockArgument.OutputTypes,
+            CommandFunctionReferenceArgument functionReferenceArgument => functionReferenceArgument.OutputTypes,
+            _ => [argument.GetType()]
+        };
+    }
+
+    private Type[] GetNestedInvocationOutputTypes(ICommandInvocation invocation)
+    {
+        var command = invocation.CommandTask.GetAwaiter().GetResult();
+        return GetInvocationOutputTypes(invocation, command);
+    }
+
 
     private sealed record LoweredCommand(
         ICommandInvocation? RuntimeInvocation,
         ICommandOutput? CompileTimeOutput,
-        string Name);
+        string Name,
+        Type[] OutputTypes);
 }

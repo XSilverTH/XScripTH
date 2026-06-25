@@ -67,16 +67,27 @@ public sealed class Var : ICommand, ICompileTimePhase
             case CommandInvocationArgument invocationArgument:
                 var command = await invocationArgument.Invocation.CommandTask.WaitAsync(cancellationToken).ConfigureAwait(false)
                     ?? throw new InvalidOperationException("var requires its value expression to resolve to a command.");
-                var outputs = command.GetType().GetCustomAttribute<CommandTypesAttribute>()?.Outputs;
-                if (outputs is not { Length: 1 })
-                {
-                    throw new InvalidOperationException("var requires its value expression to have exactly one declared output type.");
-                }
+                return RequireSingleOutputType(
+                    invocationArgument.Invocation.StaticOutputTypes ?? command.GetType().GetCustomAttribute<CommandTypesAttribute>()?.Outputs);
 
-                return outputs[0];
+            case CommandBlockArgument blockArgument:
+                return RequireSingleOutputType(blockArgument.OutputTypes);
+
+            case CommandFunctionReferenceArgument functionReferenceArgument:
+                return RequireSingleOutputType(functionReferenceArgument.OutputTypes);
 
             default:
                 throw new InvalidOperationException($"var does not support value argument type '{argument.GetType().FullName}'.");
         }
+    }
+
+    private static Type RequireSingleOutputType(Type[]? outputs)
+    {
+        if (outputs is not { Length: 1 })
+        {
+            throw new InvalidOperationException("var requires its value expression to have exactly one declared output type.");
+        }
+
+        return outputs[0];
     }
 }

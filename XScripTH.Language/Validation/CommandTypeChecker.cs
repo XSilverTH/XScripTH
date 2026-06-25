@@ -98,21 +98,18 @@ public sealed class CommandTypeChecker : ICommandTypeChecker
             ?? throw new InvalidOperationException("Command invocation returned null command.");
         var commandTypes = command.GetType().GetCustomAttribute<CommandTypesAttribute>();
         var inputs = commandTypes?.Inputs;
-        var outputs = commandTypes?.Outputs;
+        var outputs = GetInvocationOutputTypes(invocation, command);
         var errors = new List<CommandTypeCheckError>();
 
         if (inputs is null)
         {
             for (var index = 0; index < invocation.Arguments.Count; index++)
             {
-                if (invocation.Arguments[index] is CommandInvocationArgument nestedArgument)
-                {
-                    var nestedValidation = await ValidateInvocationInternalAsync(
-                        nestedArgument.Invocation,
-                        AppendPath(path, index),
-                        cancellationToken).ConfigureAwait(false);
-                    errors.AddRange(nestedValidation.Errors);
-                }
+                await ValidateArgumentChildrenAsync(
+                    errors,
+                    invocation.Arguments[index],
+                    AppendPath(path, index),
+                    cancellationToken).ConfigureAwait(false);
             }
 
             return new InvocationValidation(errors, command, outputs);
@@ -133,14 +130,11 @@ public sealed class CommandTypeChecker : ICommandTypeChecker
                     GetArgumentActualType(extraArgument),
                     $"Input {FormatPath(currentPath)} was provided, but the command only accepts {inputs.Length} value(s)."));
 
-                if (extraArgument is CommandInvocationArgument extraNestedArgument)
-                {
-                    var nestedValidation = await ValidateInvocationInternalAsync(
-                        extraNestedArgument.Invocation,
-                        currentPath,
-                        cancellationToken).ConfigureAwait(false);
-                    errors.AddRange(nestedValidation.Errors);
-                }
+                await ValidateArgumentChildrenAsync(
+                    errors,
+                    extraArgument,
+                    currentPath,
+                    cancellationToken).ConfigureAwait(false);
 
                 continue;
             }
@@ -193,6 +187,21 @@ public sealed class CommandTypeChecker : ICommandTypeChecker
                         cancellationToken).ConfigureAwait(false);
                     errors.AddRange(nestedValidation.Errors);
                     AddNestedOutputCompatibilityErrors(errors, currentPath, expectedType, nestedValidation.Outputs);
+                    break;
+
+                case CommandBlockArgument blockArgument:
+                    await ValidateBlockChildrenAsync(errors, blockArgument, currentPath, cancellationToken).ConfigureAwait(false);
+                    if (!IsBlockContainerExpected(expectedType))
+                    {
+                        AddNestedOutputCompatibilityErrors(errors, currentPath, expectedType, blockArgument.OutputTypes);
+                    }
+                    break;
+
+                case CommandFunctionReferenceArgument functionReferenceArgument:
+                    if (!IsBlockContainerExpected(expectedType))
+                    {
+                        AddNestedOutputCompatibilityErrors(errors, currentPath, expectedType, functionReferenceArgument.OutputTypes);
+                    }
                     break;
             }
         }
@@ -255,13 +264,59 @@ public sealed class CommandTypeChecker : ICommandTypeChecker
         return expectedNonNullable.IsAssignableFrom(outputNonNullable);
     }
 
+    private static bool IsBlockContainerExpected(Type expectedType) =>
+        expectedType != typeof(object) && expectedType.IsAssignableFrom(typeof(CommandBlockArgument));
+
     private static Type? GetArgumentActualType(ICommandArgument argument) => argument switch
     {
         CommandValueArgument valueArgument => valueArgument.Value?.GetType(),
         CommandVariableArgument variableArgument => variableArgument.VariableType,
         CommandInvocationArgument => null,
+        CommandBlockArgument => typeof(CommandBlockArgument),
+        CommandFunctionReferenceArgument => typeof(CommandBlockArgument),
         _ => argument.GetType()
     };
+
+    private static Type[]? GetInvocationOutputTypes(ICommandInvocation invocation, ICommand command) =>
+        invocation.StaticOutputTypes ?? command.GetType().GetCustomAttribute<CommandTypesAttribute>()?.Outputs;
+
+    private static async Task ValidateArgumentChildrenAsync(
+        List<CommandTypeCheckError> errors,
+        ICommandArgument argument,
+        IReadOnlyList<int> path,
+        CancellationToken cancellationToken)
+    {
+        if (argument is CommandInvocationArgument nestedArgument)
+        {
+            var nestedValidation = await ValidateInvocationInternalAsync(
+                nestedArgument.Invocation,
+                path,
+                cancellationToken).ConfigureAwait(false);
+            errors.AddRange(nestedValidation.Errors);
+        }
+        else if (argument is CommandBlockArgument blockArgument)
+        {
+            await ValidateBlockChildrenAsync(errors, blockArgument, path, cancellationToken).ConfigureAwait(false);
+        }
+    }
+
+    private static async Task ValidateBlockChildrenAsync(
+        List<CommandTypeCheckError> errors,
+        CommandBlockArgument blockArgument,
+        IReadOnlyList<int> path,
+        CancellationToken cancellationToken)
+    {
+        for (var index = 0; index < blockArgument.Invocations.Count; index++)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            var blockInvocation = await blockArgument.Invocations[index].WaitAsync(cancellationToken).ConfigureAwait(false);
+            var blockValidation = await ValidateInvocationInternalAsync(
+                blockInvocation,
+                AppendPath(path, index),
+                cancellationToken).ConfigureAwait(false);
+            errors.AddRange(blockValidation.Errors);
+        }
+    }
 
     private static IReadOnlyList<int> AppendPath(IReadOnlyList<int> path, int index)
     {
