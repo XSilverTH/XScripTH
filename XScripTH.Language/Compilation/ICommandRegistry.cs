@@ -1,6 +1,6 @@
 using XScripTH.Contracts.Interfaces;
 
-namespace XScripTH.Language;
+namespace XScripTH.Language.Compilation;
 
 public interface ICommandRegistry
 {

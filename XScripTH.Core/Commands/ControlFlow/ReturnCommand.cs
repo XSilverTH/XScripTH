@@ -10,11 +10,8 @@ public sealed class ReturnCommand : ICommand
 {
     public Task<ICommandOutput> Execute(ICommandIo input)
     {
-        if (input.Values is not { Count: 1 })
-        {
-            throw new ArgumentException("return requires exactly one input value.", nameof(input));
-        }
-
-        return Task.FromResult<ICommandOutput>(CommandOutput.Ok([input.Values[0]]));
+        return input.Values is not { Count: 1 }
+            ? throw new ArgumentException("return requires exactly one input value.", nameof(input))
+            : Task.FromResult<ICommandOutput>(CommandOutput.Ok([input.Values[0]]));
     }
 }

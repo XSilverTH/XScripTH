@@ -1,6 +1,4 @@
-using System;
-
-namespace XScripTH.Language;
+namespace XScripTH.Language.Compilation;
 
 public sealed class XScriptCommandResolutionException : Exception
 {

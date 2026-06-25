@@ -26,7 +26,8 @@ public sealed class CommandTypeChecker : ICommandTypeChecker
         CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(invocation);
-        var validation = await ValidateInvocationInternalAsync(invocation, Array.Empty<int>(), cancellationToken).ConfigureAwait(false);
+        var validation = await ValidateInvocationInternalAsync(invocation, Array.Empty<int>(), cancellationToken)
+            .ConfigureAwait(false);
         return validation.Errors.Count == 0
             ? CommandTypeCheckResult.Valid
             : CommandTypeCheckResult.Invalid(validation.Errors);
@@ -38,12 +39,10 @@ public sealed class CommandTypeChecker : ICommandTypeChecker
     {
         var validation = await ValidateProgramAsync(invocations, cancellationToken).ConfigureAwait(false);
         if (validation.Errors.Count == 0)
-        {
             return;
-        }
 
         var command = validation.FirstInvalidCommand
-            ?? throw new InvalidOperationException("Type check failed without an invalid command.");
+                      ?? throw new InvalidOperationException("Type check failed without an invalid command.");
         throw new CommandTypeCheckException(command.GetType(), GetCommandName(command.GetType()), validation.Errors);
     }
 
@@ -52,13 +51,13 @@ public sealed class CommandTypeChecker : ICommandTypeChecker
         CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(invocation);
-        var validation = await ValidateInvocationInternalAsync(invocation, Array.Empty<int>(), cancellationToken).ConfigureAwait(false);
+        var validation = await ValidateInvocationInternalAsync(invocation, Array.Empty<int>(), cancellationToken)
+            .ConfigureAwait(false);
         if (validation.Errors.Count == 0)
-        {
             return;
-        }
 
-        throw new CommandTypeCheckException(validation.Command.GetType(), GetCommandName(validation.Command.GetType()), validation.Errors);
+        throw new CommandTypeCheckException(validation.Command.GetType(), GetCommandName(validation.Command.GetType()),
+            validation.Errors);
     }
 
     private static async Task<ProgramValidation> ValidateProgramAsync(
@@ -73,11 +72,10 @@ public sealed class CommandTypeChecker : ICommandTypeChecker
         foreach (var invocation in invocations)
         {
             cancellationToken.ThrowIfCancellationRequested();
-            var validation = await ValidateInvocationInternalAsync(invocation, Array.Empty<int>(), cancellationToken).ConfigureAwait(false);
+            var validation = await ValidateInvocationInternalAsync(invocation, Array.Empty<int>(), cancellationToken)
+                .ConfigureAwait(false);
             if (validation.Errors.Count > 0 && firstInvalidCommand is null)
-            {
                 firstInvalidCommand = validation.Command;
-            }
 
             errors.AddRange(validation.Errors);
         }
@@ -94,7 +92,7 @@ public sealed class CommandTypeChecker : ICommandTypeChecker
         cancellationToken.ThrowIfCancellationRequested();
 
         var command = invocation.Command
-            ?? throw new InvalidOperationException("Command invocation returned null command.");
+                      ?? throw new InvalidOperationException("Command invocation returned null command.");
         var commandTypes = command.GetType().GetCustomAttribute<CommandTypesAttribute>();
         var inputs = commandTypes?.Inputs;
         var outputs = GetInvocationOutputTypes(invocation, command);
@@ -103,13 +101,11 @@ public sealed class CommandTypeChecker : ICommandTypeChecker
         if (inputs is null)
         {
             for (var index = 0; index < invocation.Arguments.Count; index++)
-            {
                 await ValidateArgumentChildrenAsync(
                     errors,
                     invocation.Arguments[index],
                     AppendPath(path, index),
                     cancellationToken).ConfigureAwait(false);
-            }
 
             return new InvocationValidation(errors, command, outputs);
         }
@@ -154,20 +150,17 @@ public sealed class CommandTypeChecker : ICommandTypeChecker
             {
                 case CommandValueArgument valueArgument:
                     if (!MatchesExpectedType(valueArgument.Value, expectedType))
-                    {
                         errors.Add(new CommandTypeCheckError(
                             currentPath,
                             expectedType,
                             valueArgument.Value?.GetType(),
                             $"Input {FormatPath(currentPath)} expected {FormatType(expectedType)}, but received {FormatType(valueArgument.Value?.GetType())}."));
-                    }
+
                     break;
 
                 case CommandVariableArgument variableArgument:
                     if (expectedType.IsAssignableFrom(typeof(CommandVariableArgument)))
-                    {
                         break;
-                    }
 
                     if (!MatchesExpectedOutputType(variableArgument.VariableType, expectedType))
                     {
@@ -177,6 +170,7 @@ public sealed class CommandTypeChecker : ICommandTypeChecker
                             variableArgument.VariableType,
                             $"Input {FormatPath(currentPath)} expected {FormatType(expectedType)}, but received {FormatType(variableArgument.VariableType)}."));
                     }
+
                     break;
 
                 case CommandInvocationArgument invocationArgument:
@@ -189,26 +183,33 @@ public sealed class CommandTypeChecker : ICommandTypeChecker
                     break;
 
                 case CommandBlockArgument blockArgument:
-                    await ValidateBlockChildrenAsync(errors, blockArgument, currentPath, cancellationToken).ConfigureAwait(false);
+                    await ValidateBlockChildrenAsync(errors, blockArgument, currentPath, cancellationToken)
+                        .ConfigureAwait(false);
                     if (IsWhileConditionBlock(command, index))
                     {
-                        AddNestedOutputCompatibilityErrors(errors, currentPath, typeof(bool), blockArgument.OutputTypes);
+                        AddNestedOutputCompatibilityErrors(errors, currentPath, typeof(bool),
+                            blockArgument.OutputTypes);
                     }
                     else if (!IsBlockContainerExpected(expectedType))
                     {
-                        AddNestedOutputCompatibilityErrors(errors, currentPath, expectedType, blockArgument.OutputTypes);
+                        AddNestedOutputCompatibilityErrors(errors, currentPath, expectedType,
+                            blockArgument.OutputTypes);
                     }
+
                     break;
 
                 case CommandFunctionReferenceArgument functionReferenceArgument:
                     if (IsWhileConditionBlock(command, index))
                     {
-                        AddNestedOutputCompatibilityErrors(errors, currentPath, typeof(bool), functionReferenceArgument.OutputTypes);
+                        AddNestedOutputCompatibilityErrors(errors, currentPath, typeof(bool),
+                            functionReferenceArgument.OutputTypes);
                     }
                     else if (!IsBlockContainerExpected(expectedType))
                     {
-                        AddNestedOutputCompatibilityErrors(errors, currentPath, expectedType, functionReferenceArgument.OutputTypes);
+                        AddNestedOutputCompatibilityErrors(errors, currentPath, expectedType,
+                            functionReferenceArgument.OutputTypes);
                     }
+
                     break;
             }
         }
@@ -257,9 +258,7 @@ public sealed class CommandTypeChecker : ICommandTypeChecker
     {
         var targetType = Nullable.GetUnderlyingType(expectedType) ?? expectedType;
         if (value is null)
-        {
             return !targetType.IsValueType || Nullable.GetUnderlyingType(expectedType) is not null;
-        }
 
         return targetType.IsInstanceOfType(value);
     }
@@ -296,17 +295,20 @@ public sealed class CommandTypeChecker : ICommandTypeChecker
         IReadOnlyList<int> path,
         CancellationToken cancellationToken)
     {
-        if (argument is CommandInvocationArgument nestedArgument)
+        switch (argument)
         {
-            var nestedValidation = await ValidateInvocationInternalAsync(
-                nestedArgument.Invocation,
-                path,
-                cancellationToken).ConfigureAwait(false);
-            errors.AddRange(nestedValidation.Errors);
-        }
-        else if (argument is CommandBlockArgument blockArgument)
-        {
-            await ValidateBlockChildrenAsync(errors, blockArgument, path, cancellationToken).ConfigureAwait(false);
+            case CommandInvocationArgument nestedArgument:
+            {
+                var nestedValidation = await ValidateInvocationInternalAsync(
+                    nestedArgument.Invocation,
+                    path,
+                    cancellationToken).ConfigureAwait(false);
+                errors.AddRange(nestedValidation.Errors);
+                break;
+            }
+            case CommandBlockArgument blockArgument:
+                await ValidateBlockChildrenAsync(errors, blockArgument, path, cancellationToken).ConfigureAwait(false);
+                break;
         }
     }
 
@@ -349,5 +351,8 @@ public sealed class CommandTypeChecker : ICommandTypeChecker
 
     private sealed record ProgramValidation(IReadOnlyList<CommandTypeCheckError> Errors, ICommand? FirstInvalidCommand);
 
-    private sealed record InvocationValidation(IReadOnlyList<CommandTypeCheckError> Errors, ICommand Command, Type[]? Outputs);
+    private sealed record InvocationValidation(
+        IReadOnlyList<CommandTypeCheckError> Errors,
+        ICommand Command,
+        Type[]? Outputs);
 }

@@ -5,9 +5,11 @@ namespace XScripTH.Language.Validation;
 
 public interface ICommandTypeChecker
 {
-    Task<CommandTypeCheckResult> ValidateAsync(IEnumerable<ICommandInvocation> invocations, CancellationToken cancellationToken = default);
+    Task<CommandTypeCheckResult> ValidateAsync(IEnumerable<ICommandInvocation> invocations,
+        CancellationToken cancellationToken = default);
 
-    Task<CommandTypeCheckResult> ValidateInvocationAsync(ICommandInvocation invocation, CancellationToken cancellationToken = default);
+    Task<CommandTypeCheckResult> ValidateInvocationAsync(ICommandInvocation invocation,
+        CancellationToken cancellationToken = default);
 
     Task EnsureValidAsync(IEnumerable<ICommandInvocation> invocations, CancellationToken cancellationToken = default);
 

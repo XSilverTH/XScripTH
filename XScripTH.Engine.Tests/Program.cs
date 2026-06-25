@@ -118,7 +118,8 @@ static async Task RuntimeRejectsMissingVariableCommandArguments()
 
     if (!exception.Message.Contains("$message"))
     {
-        throw new InvalidOperationException($"Expected exception message containing '$message', but got '{exception.Message}'.");
+        throw new InvalidOperationException(
+            $"Expected exception message containing '$message', but got '{exception.Message}'.");
     }
 }
 
@@ -170,7 +171,8 @@ static async Task MissingFunctionReferenceThrowsName()
 {
     var engine = new XScripTHEngine();
     var context = new XScriptExecutionContext(engine);
-    var invocation = Invoke(new StringLengthCommand(), new CommandFunctionReferenceArgument("missing", [typeof(string)]));
+    var invocation = Invoke(new StringLengthCommand(),
+        new CommandFunctionReferenceArgument("missing", [typeof(string)]));
 
     var exception = await AssertThrowsAsync<InvalidOperationException>(async () =>
     {
@@ -179,7 +181,8 @@ static async Task MissingFunctionReferenceThrowsName()
 
     if (!exception.Message.Contains("@missing"))
     {
-        throw new InvalidOperationException($"Expected exception message containing '@missing', but got '{exception.Message}'.");
+        throw new InvalidOperationException(
+            $"Expected exception message containing '@missing', but got '{exception.Message}'.");
     }
 }
 
@@ -189,7 +192,8 @@ static CommandValueArgument Value(object? value) => new(value);
 
 static CommandInvocationArgument Nested(ICommandInvocation invocation) => new(invocation);
 
-static CommandInvocation Invoke(ICommand command, params ICommandArgument[] arguments) => CommandInvocation.FromCommand(command, arguments);
+static CommandInvocation Invoke(ICommand command, params ICommandArgument[] arguments) =>
+    CommandInvocation.FromCommand(command, arguments);
 
 static T SingleValue<T>(ICommandIo io)
 {
@@ -222,7 +226,8 @@ static async Task<TException> AssertThrowsAsync<TException>(Func<Task> action)
     }
     catch (Exception ex)
     {
-        throw new InvalidOperationException($"Expected exception {typeof(TException).FullName}, but caught {ex.GetType().FullName}: {ex.Message}");
+        throw new InvalidOperationException(
+            $"Expected exception {typeof(TException).FullName}, but caught {ex.GetType().FullName}: {ex.Message}");
     }
 
     throw new InvalidOperationException($"Expected exception {typeof(TException).FullName}.");

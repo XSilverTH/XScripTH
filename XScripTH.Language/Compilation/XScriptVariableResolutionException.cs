@@ -1,12 +1,7 @@
-namespace XScripTH.Language;
+namespace XScripTH.Language.Compilation;
 
-public sealed class XScriptVariableResolutionException : Exception
+public sealed class XScriptVariableResolutionException(string variableName)
+    : Exception($"Variable '${variableName}' could not be resolved.")
 {
-    public XScriptVariableResolutionException(string variableName)
-        : base($"Variable '${variableName}' could not be resolved.")
-    {
-        VariableName = variableName;
-    }
-
-    public string VariableName { get; }
+    public string VariableName { get; } = variableName;
 }

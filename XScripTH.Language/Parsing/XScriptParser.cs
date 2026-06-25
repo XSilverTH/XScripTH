@@ -1,36 +1,26 @@
-using System;
-using System.Collections.Generic;
 using System.Globalization;
-using System.Linq;
 using Pidgin;
+using XScripTH.Language.Ast;
 using static Pidgin.Parser;
 using static Pidgin.Parser<char>;
-using XScripTH.Language.Ast;
 
-namespace XScripTH.Language;
+namespace XScripTH.Language.Parsing;
 
 public sealed class XScriptParser
 {
-    public XScriptProgramAst Parse(string source)
+    public static XScriptProgramAst Parse(string source)
     {
-        if (source == null)
-        {
-            throw new ArgumentNullException(nameof(source));
-        }
+        ArgumentNullException.ThrowIfNull(source);
 
         var result = ParserGrammar.Program.Parse(source);
-        if (!result.Success)
-        {
-            var error = result.Error!;
-            var pos = error.ErrorPos;
-            throw new XScriptParseException(
-                error.RenderErrorMessage(),
-                0,
-                pos.Line,
-                pos.Col);
-        }
-
-        return result.Value;
+        if (result.Success) return result.Value;
+        var error = result.Error!;
+        var pos = error.ErrorPos;
+        throw new XScriptParseException(
+            error.RenderErrorMessage(),
+            0,
+            pos.Line,
+            pos.Col);
     }
 
     private static class ParserGrammar
@@ -47,7 +37,7 @@ public sealed class XScriptParser
         }
 
         private static Parser<char, T> ThrowParseError<T>(string message) =>
-            CurrentPos.Bind(pos => 
+            CurrentPos.Bind(pos =>
             {
                 ThrowException(message, pos);
                 return Return(default(T)!);
@@ -56,7 +46,7 @@ public sealed class XScriptParser
         // Terminals
         private static readonly Parser<char, XScriptCommandTerminator> Terminator =
             Try(Tok(";;")).Map(_ => XScriptCommandTerminator.FireAndForget)
-            .Or(Tok(';').Map(_ => XScriptCommandTerminator.Await));
+                .Or(Tok(';').Map(_ => XScriptCommandTerminator.Await));
 
         private static readonly Parser<char, string> IdentifierStr =
             Map((first, rest) => first + rest,
@@ -69,7 +59,8 @@ public sealed class XScriptParser
         // Keywords
         private static readonly Parser<char, bool> BoolTrue = String("true").Map(_ => true);
         private static readonly Parser<char, bool> BoolFalse = String("false").Map(_ => false);
-        private static readonly Parser<char, bool> BooleanToken = 
+
+        private static readonly Parser<char, bool> BooleanToken =
             Try(BoolTrue.Or(BoolFalse).Before(Not(LetterOrDigit.Or(Char('_')).Or(Char('-'))))).Before(SkipWs);
 
         private static readonly Parser<char, string> VariableName =
@@ -82,11 +73,11 @@ public sealed class XScriptParser
         private static readonly Parser<char, char> StringEscape =
             Char('\\').Then(
                 Char('\\').Map(_ => '\\')
-                .Or(Char('"').Map(_ => '"'))
-                .Or(Char('n').Map(_ => '\n'))
-                .Or(Char('r').Map(_ => '\r'))
-                .Or(Char('t').Map(_ => '\t'))
-                .Or(Char('0').Map(_ => '\0'))
+                    .Or(Char('"').Map(_ => '"'))
+                    .Or(Char('n').Map(_ => '\n'))
+                    .Or(Char('r').Map(_ => '\r'))
+                    .Or(Char('t').Map(_ => '\t'))
+                    .Or(Char('0').Map(_ => '\0'))
             );
 
         private static readonly Parser<char, string> StringLiteral =
@@ -98,12 +89,12 @@ public sealed class XScriptParser
         private static readonly Parser<char, char> CharEscape =
             Char('\\').Then(
                 Char('\\').Map(_ => '\\')
-                .Or(Char('\'').Map(_ => '\''))
-                .Or(Char('"').Map(_ => '"'))
-                .Or(Char('n').Map(_ => '\n'))
-                .Or(Char('r').Map(_ => '\r'))
-                .Or(Char('t').Map(_ => '\t'))
-                .Or(Char('0').Map(_ => '\0'))
+                    .Or(Char('\'').Map(_ => '\''))
+                    .Or(Char('"').Map(_ => '"'))
+                    .Or(Char('n').Map(_ => '\n'))
+                    .Or(Char('r').Map(_ => '\r'))
+                    .Or(Char('t').Map(_ => '\t'))
+                    .Or(Char('0').Map(_ => '\0'))
             );
 
         private static readonly Parser<char, char> CharLiteral =
@@ -115,55 +106,68 @@ public sealed class XScriptParser
         private static readonly Parser<char, object> NumberLiteral =
             CurrentPos.Bind(pos =>
                 Try(Tok(
-                    Map((sign, intPart, fracPart, suffix) => 
-                    {
-                        var isNegative = sign.HasValue && sign.Value == '-';
-                        var numStr = (isNegative ? "-" : "") + intPart + fracPart.GetValueOrDefault("");
-                        var suf = suffix.GetValueOrDefault("").ToLowerInvariant();
-                        var hasDecimal = fracPart.HasValue;
+                    Map((sign, intPart, fracPart, suffix) =>
+                        {
+                            var isNegative = sign is { HasValue: true, Value: '-' };
+                            var numStr = (isNegative ? "-" : "") + intPart + fracPart.GetValueOrDefault("");
+                            var suf = suffix.GetValueOrDefault("").ToLowerInvariant();
+                            var hasDecimal = fracPart.HasValue;
 
-                        if (hasDecimal)
-                        {
-                            if (string.IsNullOrEmpty(suf)) throw new XScriptParseException($"Decimal-point numeric literal '{numStr}' requires a suffix (f, d, or m)", 0, pos.Line, pos.Col);
-                            if (suf != "f" && suf != "d" && suf != "m") throw new XScriptParseException($"Integral suffix '{suf}' is not allowed on decimal-point literal '{numStr}{suf}'", 0, pos.Line, pos.Col);
-                        }
-                        else
-                        {
-                            var validSuffixes = new HashSet<string> { "", "i", "l", "s", "b", "sb", "u", "ul", "us", "f", "d", "m" };
-                            if (!validSuffixes.Contains(suf)) throw new XScriptParseException($"Unknown suffix '{suf}' on numeric literal '{numStr}{suf}'", 0, pos.Line, pos.Col);
-                        }
-
-                        try
-                        {
-                            return suf switch
+                            if (hasDecimal)
                             {
-                                "" or "i" => (object)int.Parse(numStr, CultureInfo.InvariantCulture),
-                                "l" => long.Parse(numStr, CultureInfo.InvariantCulture),
-                                "s" => short.Parse(numStr, CultureInfo.InvariantCulture),
-                                "b" => byte.Parse(numStr, CultureInfo.InvariantCulture),
-                                "sb" => sbyte.Parse(numStr, CultureInfo.InvariantCulture),
-                                "u" => uint.Parse(numStr, CultureInfo.InvariantCulture),
-                                "ul" => ulong.Parse(numStr, CultureInfo.InvariantCulture),
-                                "us" => ushort.Parse(numStr, CultureInfo.InvariantCulture),
-                                "f" => float.Parse(numStr, NumberStyles.Any, CultureInfo.InvariantCulture),
-                                "d" => double.Parse(numStr, NumberStyles.Any, CultureInfo.InvariantCulture),
-                                "m" => decimal.Parse(numStr, NumberStyles.Any, CultureInfo.InvariantCulture),
-                                _ => throw new XScriptParseException($"Unknown suffix '{suf}'", 0, pos.Line, pos.Col)
-                            };
-                        }
-                        catch (OverflowException)
-                        {
-                            throw new XScriptParseException($"Numeric literal '{numStr}{suf}' overflowed", 0, pos.Line, pos.Col);
-                        }
-                        catch (FormatException ex)
-                        {
-                            throw new XScriptParseException($"Invalid numeric literal '{numStr}{suf}'.", 0, pos.Line, pos.Col, ex);
-                        }
-                    },
-                    Char('-').Optional(),
-                    Digit.AtLeastOnceString(),
-                    Char('.').Then(Digit.AtLeastOnceString()).Map(d => "." + d).Optional(),
-                    Letter.ManyString().Optional()
+                                if (string.IsNullOrEmpty(suf))
+                                    throw new XScriptParseException(
+                                        $"Decimal-point numeric literal '{numStr}' requires a suffix (f, d, or m)", 0,
+                                        pos.Line, pos.Col);
+                                if (suf != "f" && suf != "d" && suf != "m")
+                                    throw new XScriptParseException(
+                                        $"Integral suffix '{suf}' is not allowed on decimal-point literal '{numStr}{suf}'",
+                                        0, pos.Line, pos.Col);
+                            }
+                            else
+                            {
+                                var validSuffixes = new HashSet<string>
+                                    { "", "i", "l", "s", "b", "sb", "u", "ul", "us", "f", "d", "m" };
+                                if (!validSuffixes.Contains(suf))
+                                    throw new XScriptParseException(
+                                        $"Unknown suffix '{suf}' on numeric literal '{numStr}{suf}'", 0, pos.Line,
+                                        pos.Col);
+                            }
+
+                            try
+                            {
+                                return suf switch
+                                {
+                                    "" or "i" => (object)int.Parse(numStr, CultureInfo.InvariantCulture),
+                                    "l" => long.Parse(numStr, CultureInfo.InvariantCulture),
+                                    "s" => short.Parse(numStr, CultureInfo.InvariantCulture),
+                                    "b" => byte.Parse(numStr, CultureInfo.InvariantCulture),
+                                    "sb" => sbyte.Parse(numStr, CultureInfo.InvariantCulture),
+                                    "u" => uint.Parse(numStr, CultureInfo.InvariantCulture),
+                                    "ul" => ulong.Parse(numStr, CultureInfo.InvariantCulture),
+                                    "us" => ushort.Parse(numStr, CultureInfo.InvariantCulture),
+                                    "f" => float.Parse(numStr, NumberStyles.Any, CultureInfo.InvariantCulture),
+                                    "d" => double.Parse(numStr, NumberStyles.Any, CultureInfo.InvariantCulture),
+                                    "m" => decimal.Parse(numStr, NumberStyles.Any, CultureInfo.InvariantCulture),
+                                    _ => throw new XScriptParseException($"Unknown suffix '{suf}'", 0, pos.Line,
+                                        pos.Col)
+                                };
+                            }
+                            catch (OverflowException)
+                            {
+                                throw new XScriptParseException($"Numeric literal '{numStr}{suf}' overflowed", 0,
+                                    pos.Line, pos.Col);
+                            }
+                            catch (FormatException ex)
+                            {
+                                throw new XScriptParseException($"Invalid numeric literal '{numStr}{suf}'.", 0,
+                                    pos.Line, pos.Col, ex);
+                            }
+                        },
+                        Char('-').Optional(),
+                        Digit.AtLeastOnceString(),
+                        Char('.').Then(Digit.AtLeastOnceString()).Map(d => "." + d).Optional(),
+                        Letter.ManyString().Optional()
                     )
                 ))
             );
@@ -173,19 +177,21 @@ public sealed class XScriptParser
 
         private static readonly Parser<char, Unit> NestedTerminator =
             CurrentPos.Bind(pos =>
-                Try(String(";;")).Bind(_ => ThrowParseError<Unit>($"Nested command arguments must use ';'. Unexpected double semicolon ';;' at {pos.Line}:{pos.Col}."))
-                .Or(
-                    Try(
-                        Char(';').Before(SkipWs).Bind(_ => 
-                            Lookahead(Any).Optional().Bind(next => 
-                                (next.HasValue && (next.Value == ',' || next.Value == ';'))
-                                ? Return(Unit.Value)
-                                : Parser<char>.Fail<Unit>("Don't consume")
+                Try(String(";;")).Bind(_ =>
+                        ThrowParseError<Unit>(
+                            $"Nested command arguments must use ';'. Unexpected double semicolon ';;' at {pos.Line}:{pos.Col}."))
+                    .Or(
+                        Try(
+                            Char(';').Before(SkipWs).Bind(_ =>
+                                Lookahead(Any).Optional().Bind(next =>
+                                    (next.HasValue && (next.Value == ',' || next.Value == ';'))
+                                        ? Return(Unit.Value)
+                                        : Parser<char>.Fail<Unit>("Don't consume")
+                                )
                             )
                         )
                     )
-                )
-                .Or(Lookahead(Char(';')).Map(_ => Unit.Value))
+                    .Or(Lookahead(Char(';')).Map(_ => Unit.Value))
             );
 
         static ParserGrammar()
@@ -195,24 +201,26 @@ public sealed class XScriptParser
 
             var argumentsParser = argumentParser.Separated(Tok(','));
 
-            var nestedCommand = Map((name, args, _) => (XScriptArgumentAst)new XScriptCommandArgumentAst(new XScriptCommandAst(name, args.ToList(), XScriptCommandTerminator.Await)),
+            var nestedCommand = Map(XScriptArgumentAst (name, args, _) =>
+                    new XScriptCommandArgumentAst(new XScriptCommandAst(name, args.ToList(),
+                        XScriptCommandTerminator.Await)),
                 Identifier,
                 argumentsParser,
                 NestedTerminator
             );
 
-            var block = Map((cmds) => (XScriptArgumentAst)new XScriptBlockArgumentAst(cmds.ToList()),
+            var block = Map(XScriptArgumentAst (cmds) => new XScriptBlockArgumentAst(cmds.ToList()),
                 Tok('{').Then(topCommandParser.Many()).Before(Tok('}'))
             );
 
-            var literalArg = 
-                Try(StringLiteral).Map(v => (XScriptArgumentAst)new XScriptLiteralArgumentAst(v))
-                .Or(Try(CharLiteral).Map(v => (XScriptArgumentAst)new XScriptLiteralArgumentAst(v)))
-                .Or(Try(NumberLiteral).Map(v => (XScriptArgumentAst)new XScriptLiteralArgumentAst(v)))
-                .Or(Try(BooleanToken).Map(v => (XScriptArgumentAst)new XScriptLiteralArgumentAst(v)));
+            var literalArg =
+                Try(StringLiteral).Map<XScriptArgumentAst>(v => new XScriptLiteralArgumentAst(v))
+                    .Or(Try(CharLiteral).Map<XScriptArgumentAst>(v => new XScriptLiteralArgumentAst(v)))
+                    .Or(Try(NumberLiteral).Map<XScriptArgumentAst>(v => new XScriptLiteralArgumentAst(v)))
+                    .Or(Try(BooleanToken).Map<XScriptArgumentAst>(v => new XScriptLiteralArgumentAst(v)));
 
-            var varArg = VariableName.Map(v => (XScriptArgumentAst)new XScriptVariableArgumentAst(v));
-            var funcRefArg = FunctionRefName.Map(v => (XScriptArgumentAst)new XScriptFunctionReferenceArgumentAst(v));
+            var varArg = VariableName.Map<XScriptArgumentAst>(v => new XScriptVariableArgumentAst(v));
+            var funcRefArg = FunctionRefName.Map<XScriptArgumentAst>(v => new XScriptFunctionReferenceArgumentAst(v));
 
             Argument = literalArg
                 .Or(varArg)

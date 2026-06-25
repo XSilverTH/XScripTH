@@ -1,17 +1,13 @@
-using System;
-using System.Collections.Generic;
-using System.Linq;
 using System.Reflection;
-using System.Threading;
-using System.Threading.Tasks;
 using XScripTH.Contracts.Attributes;
 using XScripTH.Contracts.Enums;
 using XScripTH.Contracts.Interfaces;
 using XScripTH.Contracts.Models;
-using XScripTH.Language.Validation;
 using XScripTH.Language.Ast;
+using XScripTH.Language.Parsing;
+using XScripTH.Language.Validation;
 
-namespace XScripTH.Language;
+namespace XScripTH.Language.Compilation;
 
 public sealed class XScriptCompiler
 {
@@ -40,7 +36,7 @@ public sealed class XScriptCompiler
         return await CompileAsync(ast, cancellationToken).ConfigureAwait(false);
     }
 
-    public async Task<IReadOnlyList<ICommandInvocation>> CompileAsync(
+    private async Task<IReadOnlyList<ICommandInvocation>> CompileAsync(
         XScriptProgramAst ast,
         CancellationToken cancellationToken = default)
     {
@@ -56,7 +52,7 @@ public sealed class XScriptCompiler
 
     private XScriptProgramAst Parse(string source)
     {
-        return _parser.Parse(source);
+        return XScriptParser.Parse(source);
     }
 
     private async Task<BoundProgram> BindProgramAsync(
@@ -66,10 +62,8 @@ public sealed class XScriptCompiler
     {
         var boundCommands = new List<BoundCommand>();
         foreach (var cmdAst in commands)
-        {
-            var boundCommand = await BindCommandAsync(cmdAst, context, cancellationToken).ConfigureAwait(false);
-            boundCommands.Add(boundCommand);
-        }
+            boundCommands.Add(await BindCommandAsync(cmdAst, context, cancellationToken).ConfigureAwait(false));
+
         return new BoundProgram(boundCommands);
     }
 
@@ -79,9 +73,7 @@ public sealed class XScriptCompiler
         CancellationToken cancellationToken)
     {
         if (!_commandRegistry.TryCreate(commandAst.Name, out var command) || command == null)
-        {
             throw new XScriptCommandResolutionException(commandAst.Name);
-        }
 
         var phase = command as ICompileTimePhase;
         var commandTypes = command.GetType().GetCustomAttribute<CommandTypesAttribute>();
@@ -89,52 +81,37 @@ public sealed class XScriptCompiler
         var inputs = commandTypes?.Inputs;
         var arguments = new List<ICommandArgument>(commandAst.Arguments.Count);
         for (var index = 0; index < commandAst.Arguments.Count; index++)
-        {
-            var expectedInputType = inputs is not null && index < inputs.Length ? inputs[index] : null;
             arguments.Add(await LowerArgumentAsync(
                 commandAst.Arguments[index],
-                commandAst.Name,
-                phase,
-                expectedInputType,
+                inputs is not null && index < inputs.Length ? inputs[index] : null,
                 context,
                 cancellationToken).ConfigureAwait(false));
-        }
 
-        var outputTypes = commandTypes?.Outputs ?? Array.Empty<Type>();
         var staticOutputTypes = commandAst.Name == "return"
-            ? commandAst.Arguments.Count > 0 ? GetArgumentOutputTypes(arguments[0]) : Array.Empty<Type>()
+            ? commandAst.Arguments.Count > 0 ? GetArgumentOutputTypes(arguments[0]) : []
             : null;
         if (staticOutputTypes is { Length: 1 })
-        {
             staticOutputTypes = [staticOutputTypes[0]];
-        }
 
         var invocation = new CommandInvocation(command, arguments, staticOutputTypes);
-        outputTypes = GetInvocationOutputTypes(invocation, command);
+        var outputTypes = GetInvocationOutputTypes(invocation, command);
         if (phase is null)
-        {
             return new BoundCommand(invocation, null, commandAst.Terminator, commandAst.Name, outputTypes);
-        }
 
         await _typeChecker.EnsureInvocationValidAsync(invocation, cancellationToken).ConfigureAwait(false);
 
         if (!emitsRuntimeInvocation)
-        {
             foreach (var argument in invocation.Arguments)
-            {
                 if (argument is not CommandValueArgument)
-                {
-                    throw new InvalidOperationException($"Compile-time command '{commandAst.Name}' cannot use dynamic argument '{argument.GetType().FullName}'.");
-                }
-            }
-        }
+                    throw new InvalidOperationException(
+                        $"Compile-time command '{commandAst.Name}' cannot use dynamic argument '{argument.GetType().FullName}'.");
 
-        var output = await phase.ExecuteCompileTimeAsync(arguments, context, cancellationToken).ConfigureAwait(false)
-            ?? throw new InvalidOperationException($"Compile-time command '{commandAst.Name}' returned null output.");
+        var output = await phase.ExecuteCompileTimeAsync(arguments, context, cancellationToken).ConfigureAwait(false) ??
+                     throw new InvalidOperationException(
+                         $"Compile-time command '{commandAst.Name}' returned null output.");
+
         if (output.Status == CommandStatus.Error)
-        {
             throw new InvalidOperationException($"Compile-time command '{commandAst.Name}' returned an error status.");
-        }
 
         return emitsRuntimeInvocation
             ? new BoundCommand(invocation, null, commandAst.Terminator, commandAst.Name, outputTypes)
@@ -143,8 +120,6 @@ public sealed class XScriptCompiler
 
     private async Task<ICommandArgument> LowerArgumentAsync(
         XScriptArgumentAst argumentAst,
-        string parentCommandName,
-        ICompileTimePhase? parentPhase,
         Type? expectedInputType,
         ICompilationContext context,
         CancellationToken cancellationToken)
@@ -156,59 +131,50 @@ public sealed class XScriptCompiler
 
             case XScriptVariableArgumentAst variableArg:
                 if (context.Symbols.TryGetVariableType(variableArg.Name, out var variableType))
-                {
                     return new CommandVariableArgument(variableArg.Name, variableType!);
-                }
 
-                if (expectedInputType?.IsAssignableFrom(typeof(CommandVariableArgument)) == true)
-                {
-                    return new CommandVariableArgument(variableArg.Name, typeof(object));
-                }
-
-                throw new XScriptVariableResolutionException(variableArg.Name);
+                return expectedInputType?.IsAssignableFrom(typeof(CommandVariableArgument)) == true
+                    ? new CommandVariableArgument(variableArg.Name, typeof(object))
+                    : throw new XScriptVariableResolutionException(variableArg.Name);
 
             case XScriptBlockArgumentAst blockArg:
-                return await LowerBlockArgumentAsync(blockArg, context.CreateChildScope(), cancellationToken).ConfigureAwait(false);
+                return await LowerBlockArgumentAsync(blockArg, context.CreateChildScope(), cancellationToken)
+                    .ConfigureAwait(false);
 
             case XScriptFunctionReferenceArgumentAst functionArg:
-                if (context.Symbols.TryGetFunctionOutputTypes(functionArg.Name, out var outputTypes))
-                {
-                    return new CommandFunctionReferenceArgument(functionArg.Name, outputTypes!);
-                }
-
-                throw new XScriptFunctionResolutionException(functionArg.Name);
+                return context.Symbols.TryGetFunctionOutputTypes(functionArg.Name, out var outputTypes)
+                    ? new CommandFunctionReferenceArgument(functionArg.Name, outputTypes!)
+                    : throw new XScriptFunctionResolutionException(functionArg.Name);
 
             case XScriptCommandArgumentAst commandArg:
                 if (expectedInputType is not null && IsBlockContainerExpected(expectedInputType))
                 {
                     var childContext = context.CreateChildScope();
-                    var nested = await BindCommandAsync(commandArg.Command, childContext, cancellationToken).ConfigureAwait(false);
+                    var nested = await BindCommandAsync(commandArg.Command, childContext, cancellationToken)
+                        .ConfigureAwait(false);
                     if (nested.RuntimeInvocation is null)
-                    {
-                        throw new InvalidOperationException($"Command '{nested.Name}' cannot be used as a deferred block because it has no runtime invocation.");
-                    }
+                        throw new InvalidOperationException(
+                            $"Command '{nested.Name}' cannot be used as a deferred block because it has no runtime invocation.");
 
                     var invocation = EmitCommand(nested.RuntimeInvocation, commandArg.Command.Terminator);
                     return new CommandBlockArgument([invocation], nested.OutputTypes);
                 }
                 else
                 {
-                    var nested = await BindCommandAsync(commandArg.Command, context, cancellationToken).ConfigureAwait(false);
-                    if (nested.CompileTimeOutput is not null)
-                    {
-                        if (nested.CompileTimeOutput.Status != CommandStatus.Ok ||
-                            nested.CompileTimeOutput.Values is not { Count: 1 })
-                        {
-                            throw new InvalidOperationException($"Compile-time command '{nested.Name}' used as an argument must complete successfully with exactly one output value.");
-                        }
+                    var nested = await BindCommandAsync(commandArg.Command, context, cancellationToken)
+                        .ConfigureAwait(false);
+                    if (nested.CompileTimeOutput is null)
+                        return new CommandInvocationArgument(nested.RuntimeInvocation!);
+                    if (nested.CompileTimeOutput.Status != CommandStatus.Ok ||
+                        nested.CompileTimeOutput.Values is not { Count: 1 })
+                        throw new InvalidOperationException(
+                            $"Compile-time command '{nested.Name}' used as an argument must complete successfully with exactly one output value.");
 
-                        return new CommandValueArgument(nested.CompileTimeOutput.Values[0]);
-                    }
-
-                    return new CommandInvocationArgument(nested.RuntimeInvocation!);
+                    return new CommandValueArgument(nested.CompileTimeOutput.Values[0]);
                 }
             default:
-                throw new InvalidOperationException($"Unsupported AST argument type '{argumentAst?.GetType().FullName}'.");
+                throw new InvalidOperationException(
+                    $"Unsupported AST argument type '{argumentAst.GetType().FullName}'.");
         }
     }
 
@@ -220,9 +186,7 @@ public sealed class XScriptCompiler
         var boundProgram = await BindProgramAsync(blockAst.Commands, context, cancellationToken).ConfigureAwait(false);
         var invocations = EmitProgram(boundProgram);
 
-        var outputTypes = boundProgram.Commands.Count == 0 
-            ? Array.Empty<Type>() 
-            : boundProgram.Commands[^1].OutputTypes;
+        var outputTypes = boundProgram.Commands.Count == 0 ? [] : boundProgram.Commands[^1].OutputTypes;
         return new CommandBlockArgument(invocations, outputTypes);
     }
 
@@ -235,31 +199,27 @@ public sealed class XScriptCompiler
     {
         var result = new List<ICommandInvocation>();
         foreach (var cmd in bound.Commands)
-        {
             if (cmd.RuntimeInvocation is not null)
-            {
                 result.Add(EmitCommand(cmd.RuntimeInvocation, cmd.Terminator));
-            }
-        }
+
         return result;
     }
 
     private ICommandInvocation EmitCommand(ICommandInvocation invocation, XScriptCommandTerminator terminator)
     {
         if (terminator == XScriptCommandTerminator.Await)
-        {
             return invocation;
-        }
 
         ICommand fireAndForgetCommand = new FireAndForgetCommand(invocation);
         return new CommandInvocation(
             fireAndForgetCommand,
-            Array.Empty<ICommandArgument>()
+            []
         );
     }
 
     private Type[] GetInvocationOutputTypes(ICommandInvocation invocation, ICommand command) =>
-        invocation.StaticOutputTypes ?? command.GetType().GetCustomAttribute<CommandTypesAttribute>()?.Outputs ?? Array.Empty<Type>();
+        invocation.StaticOutputTypes ?? command.GetType().GetCustomAttribute<CommandTypesAttribute>()?.Outputs ??
+        [];
 
     private static bool IsBlockContainerExpected(Type expectedInputType) =>
         expectedInputType != typeof(object) && expectedInputType.IsAssignableFrom(typeof(CommandBlockArgument));
@@ -270,7 +230,8 @@ public sealed class XScriptCompiler
         {
             CommandValueArgument valueArgument => [valueArgument.Value?.GetType() ?? typeof(object)],
             CommandVariableArgument variableArgument => [variableArgument.VariableType],
-            CommandInvocationArgument invocationArgument => GetNestedInvocationOutputTypes(invocationArgument.Invocation),
+            CommandInvocationArgument invocationArgument => GetNestedInvocationOutputTypes(
+                invocationArgument.Invocation),
             CommandBlockArgument blockArgument => blockArgument.OutputTypes,
             CommandFunctionReferenceArgument functionReferenceArgument => functionReferenceArgument.OutputTypes,
             _ => [argument.GetType()]

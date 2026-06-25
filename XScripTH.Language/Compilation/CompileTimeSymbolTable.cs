@@ -1,17 +1,11 @@
 using XScripTH.Contracts.Interfaces;
 
-namespace XScripTH.Language;
+namespace XScripTH.Language.Compilation;
 
-public sealed class CompileTimeSymbolTable : ICompileTimeSymbolTable
+public sealed class CompileTimeSymbolTable(ICompileTimeSymbolTable? parent = null) : ICompileTimeSymbolTable
 {
-    private readonly ICompileTimeSymbolTable? _parent;
     private readonly Dictionary<string, Type> _variables = new(StringComparer.Ordinal);
     private readonly Dictionary<string, Type[]> _functions = new(StringComparer.Ordinal);
-
-    public CompileTimeSymbolTable(ICompileTimeSymbolTable? parent = null)
-    {
-        _parent = parent;
-    }
 
     public void DeclareVariable(string name, Type type)
     {
@@ -25,9 +19,7 @@ public sealed class CompileTimeSymbolTable : ICompileTimeSymbolTable
         }
 
         if (existingType == type)
-        {
             return;
-        }
 
         throw new InvalidOperationException(
             $"Variable '${normalizedName}' is already declared as '{existingType.FullName}' and cannot be redeclared as '{type.FullName}'.");
@@ -41,10 +33,10 @@ public sealed class CompileTimeSymbolTable : ICompileTimeSymbolTable
             type = storedType;
             return true;
         }
-        if (_parent is not null)
-        {
-            return _parent.TryGetVariableType(name, out type);
-        }
+
+        if (parent is not null)
+            return parent.TryGetVariableType(name, out type);
+
         type = null;
         return false;
     }
@@ -61,9 +53,7 @@ public sealed class CompileTimeSymbolTable : ICompileTimeSymbolTable
         }
 
         if (existingOutputTypes.SequenceEqual(outputTypes))
-        {
             return;
-        }
 
         throw new InvalidOperationException(
             $"Function '@{normalizedName}' is already declared with outputs '{FormatTypes(existingOutputTypes)}' and cannot be redeclared with outputs '{FormatTypes(outputTypes)}'.");
@@ -77,10 +67,10 @@ public sealed class CompileTimeSymbolTable : ICompileTimeSymbolTable
             outputTypes = storedOutputTypes;
             return true;
         }
-        if (_parent is not null)
-        {
-            return _parent.TryGetFunctionOutputTypes(name, out outputTypes);
-        }
+
+        if (parent is not null)
+            return parent.TryGetFunctionOutputTypes(name, out outputTypes);
+
         outputTypes = null;
         return false;
     }
@@ -93,9 +83,7 @@ public sealed class CompileTimeSymbolTable : ICompileTimeSymbolTable
     private static string NormalizeName(string name)
     {
         if (string.IsNullOrWhiteSpace(name))
-        {
             throw new ArgumentException("Variable name must be non-empty.", nameof(name));
-        }
 
         return name[0] == '$' ? name[1..] : name;
     }
@@ -103,9 +91,7 @@ public sealed class CompileTimeSymbolTable : ICompileTimeSymbolTable
     private static string NormalizeFunctionName(string name)
     {
         if (string.IsNullOrWhiteSpace(name))
-        {
             throw new ArgumentException("Function name must be non-empty.", nameof(name));
-        }
 
         return name[0] == '@' ? name[1..] : name;
     }

@@ -30,10 +30,12 @@ public class XScriptExecutionContext : IExecutionContext
         {
             return true;
         }
+
         if (_parent != null)
         {
             return _parent.TryGetVariable(normalized, out value);
         }
+
         value = null;
         return false;
     }
@@ -51,10 +53,12 @@ public class XScriptExecutionContext : IExecutionContext
         {
             return true;
         }
+
         if (_parent != null)
         {
             return _parent.TryGetFunction(normalized, out block);
         }
+
         block = null;
         return false;
     }
@@ -77,6 +81,7 @@ public class XScriptExecutionContext : IExecutionContext
         {
             throw new ArgumentException("Variable name must be non-empty.", nameof(name));
         }
+
         return name[0] == '$' ? name[1..] : name;
     }
 
@@ -86,6 +91,7 @@ public class XScriptExecutionContext : IExecutionContext
         {
             throw new ArgumentException("Function name must be non-empty.", nameof(name));
         }
+
         return name[0] == '@' ? name[1..] : name;
     }
 }

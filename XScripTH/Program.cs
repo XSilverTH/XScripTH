@@ -1,6 +1,6 @@
 using XScripTH.Core.Commands.Console;
 using XScripTH.Engine;
-using XScripTH.Language;
+using XScripTH.Language.Compilation;
 
 if (args.Length == 0)
 {
@@ -8,7 +8,8 @@ if (args.Length == 0)
     return 1;
 }
 
-var source = string.Join(' ', args);
+// var source = string.Join(' ', args);
+var source = File.ReadAllText(args[0]);
 var engine = new XScripTHEngine();
 var registry = CommandRegistry.FromAssemblies(typeof(Print).Assembly);
 var compiler = new XScriptCompiler(registry);

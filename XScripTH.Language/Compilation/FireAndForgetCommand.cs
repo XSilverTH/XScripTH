@@ -1,11 +1,8 @@
-using System;
-using System.Threading;
-using System.Threading.Tasks;
 using XScripTH.Contracts.Attributes;
 using XScripTH.Contracts.Interfaces;
 using XScripTH.Contracts.Models;
 
-namespace XScripTH.Language;
+namespace XScripTH.Language.Compilation;
 
 [CommandTypes([], [])]
 internal sealed class FireAndForgetCommand : ICommand
@@ -25,9 +22,7 @@ internal sealed class FireAndForgetCommand : ICommand
             .ContinueWith(t =>
             {
                 if (t.IsFaulted)
-                {
                     _ = t.Exception;
-                }
             }, TaskScheduler.Default);
 
         return Task.FromResult<ICommandOutput>(CommandOutput.Ok());

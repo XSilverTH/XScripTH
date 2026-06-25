@@ -1,12 +1,7 @@
-namespace XScripTH.Language;
+namespace XScripTH.Language.Compilation;
 
-public sealed class XScriptFunctionResolutionException : Exception
+public sealed class XScriptFunctionResolutionException(string functionName) : Exception(
+    $"Function '@{functionName}' could not be resolved at compile time. Declare it with func before referencing it.")
 {
-    public XScriptFunctionResolutionException(string functionName)
-        : base($"Function '@{functionName}' could not be resolved at compile time. Declare it with func before referencing it.")
-    {
-        FunctionName = functionName;
-    }
-
-    public string FunctionName { get; }
+    public string FunctionName { get; } = functionName;
 }

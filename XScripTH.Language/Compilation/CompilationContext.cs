@@ -1,6 +1,6 @@
 using XScripTH.Contracts.Interfaces;
 
-namespace XScripTH.Language;
+namespace XScripTH.Language.Compilation;
 
 public sealed class CompilationContext : ICompilationContext
 {
@@ -9,7 +9,7 @@ public sealed class CompilationContext : ICompilationContext
     {
     }
 
-    public CompilationContext(ICompileTimeSymbolTable symbols)
+    private CompilationContext(ICompileTimeSymbolTable symbols)
     {
         ArgumentNullException.ThrowIfNull(symbols);
         Symbols = symbols;

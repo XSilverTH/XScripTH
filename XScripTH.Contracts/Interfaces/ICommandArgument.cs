@@ -1,3 +1,3 @@
 namespace XScripTH.Contracts.Interfaces;
 
-public interface ICommandArgument { }
+public interface ICommandArgument;

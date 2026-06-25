@@ -13,6 +13,8 @@ using XScripTH.Core.Commands.Variables;
 using XScripTH.Engine;
 using XScripTH.Language;
 using XScripTH.Language.Ast;
+using XScripTH.Language.Compilation;
+using XScripTH.Language.Parsing;
 using XScripTH.Language.Validation;
 using XScripTH.Language.Validation.Exceptions;
 
@@ -21,7 +23,8 @@ var tests = new (string Name, Func<Task> Run)[]
     ("parses literals and executes command inputs", LiteralsExecution),
     ("parses nested command input and typechecks output", NestedCommandInputTypechecks),
     ("rejects nested command output mismatch during language typecheck", NestedOutputMismatch),
-    ("type checker accepts recursive command inputs without executing them", TypeCheckerAcceptsRecursiveCommandInputsWithoutExecutingThem),
+    ("type checker accepts recursive command inputs without executing them",
+        TypeCheckerAcceptsRecursiveCommandInputsWithoutExecutingThem),
     ("type checker rejects top-level output chaining", TypeCheckerRejectsTopLevelOutputChaining),
     ("type checker rejects nested command output mismatch", TypeCheckerRejectsNestedCommandOutputMismatch),
     ("type checker supports recursive nested command inputs", TypeCheckerSupportsRecursiveNestedCommandInputs),
@@ -29,9 +32,11 @@ var tests = new (string Name, Func<Task> Run)[]
     ("double semicolon runs without waiting", DoubleSemicolonRunsWithoutWaiting),
     ("nested double semicolon is rejected", NestedDoubleSemicolonIsRejected),
     ("unknown command fails during compile", UnknownCommandFailsDuringCompile),
-    ("compile-time command is executed during compile and omitted at runtime", CompileTimeCommandExecutesDuringCompileAndIsOmittedAtRuntime),
+    ("compile-time command is executed during compile and omitted at runtime",
+        CompileTimeCommandExecutesDuringCompileAndIsOmittedAtRuntime),
     ("registry injects command registrar into constructors", RegistryInjectsCommandRegistrarIntoConstructors),
-    ("import command registers commands before later lines compile", ImportCommandRegistersCommandsBeforeLaterLinesCompile),
+    ("import command registers commands before later lines compile",
+        ImportCommandRegistersCommandsBeforeLaterLinesCompile),
     ("variable literal assignment resolves at runtime", VariableLiteralAssignmentResolvesAtRuntime),
     ("variable nested assignment infers command output", VariableNestedAssignmentInfersCommandOutput),
     ("variable type mismatch fails during compile", VariableTypeMismatchFailsDuringCompile),
@@ -217,7 +222,8 @@ static async Task NestedDoubleSemicolonIsRejected()
 
     if (!exception.Message.Contains("Nested command arguments must use ';'"))
     {
-        throw new InvalidOperationException($"Expected exception message containing 'Nested command arguments must use ';'', but got '{exception.Message}'.");
+        throw new InvalidOperationException(
+            $"Expected exception message containing 'Nested command arguments must use ';'', but got '{exception.Message}'.");
     }
 }
 
@@ -338,7 +344,7 @@ static async Task UnresolvedVariableFailsDuringCompile()
 static Task ParsesDeferredBlockArguments()
 {
     var parser = new XScriptParser();
-    var program = parser.Parse("if { return true; }, { mark; };");
+    var program = XScriptParser.Parse("if { return true; }, { mark; };");
 
     AssertEqual(1, program.Commands.Count);
     AssertEqual("if", program.Commands[0].Name);
@@ -355,7 +361,7 @@ static Task ParsesDeferredBlockArguments()
 static Task ParsesImplicitCommandBlockArguments()
 {
     var parser = new XScriptParser();
-    var program = parser.Parse("if truth;, body;");
+    var program = XScriptParser.Parse("if truth;, body;");
 
     AssertEqual(1, program.Commands.Count);
     AssertEqual("if", program.Commands[0].Name);
@@ -370,7 +376,7 @@ static Task ParsesImplicitCommandBlockArguments()
 static Task ParsesFunctionReferences()
 {
     var parser = new XScriptParser();
-    var program = parser.Parse("func \"body\", { mark; }; if true, @body;");
+    var program = XScriptParser.Parse("func \"body\", { mark; }; if true, @body;");
 
     AssertEqual(2, program.Commands.Count);
     AssertEqual("func", program.Commands[0].Name);
@@ -478,7 +484,9 @@ static async Task BlockVariableScopeShadowsWithoutLeaking()
     CommandCounts.Reset();
     var engine = new XScripTHEngine();
     var compiler = CreateControlFlowCompiler(engine);
-    var invocations = await compiler.CompileAsync("var $message, \"outer\"; if true, { var $message, \"longer\"; }; length $message;");
+    var invocations =
+        await compiler.CompileAsync(
+            "var $message, \"outer\"; if true, { var $message, \"longer\"; }; length $message;");
 
     var outputs = await engine.ExecuteAllAsync(invocations);
 
@@ -511,7 +519,8 @@ static List<ICommandInvocation> Program(params ICommandInvocation[] invocations)
 
 static CommandInvocationArgument Nested(ICommandInvocation invocation) => new(invocation);
 
-static CommandInvocation Invoke(ICommand command, params ICommandArgument[] arguments) => CommandInvocation.FromCommand(command, arguments);
+static CommandInvocation Invoke(ICommand command, params ICommandArgument[] arguments) =>
+    CommandInvocation.FromCommand(command, arguments);
 
 static async Task<TException> AssertThrowsAsync<TException>(Func<Task> action)
     where TException : Exception
@@ -526,7 +535,8 @@ static async Task<TException> AssertThrowsAsync<TException>(Func<Task> action)
     }
     catch (Exception ex)
     {
-        throw new InvalidOperationException($"Expected exception {typeof(TException).FullName}, but caught {ex.GetType().FullName}: {ex.Message}");
+        throw new InvalidOperationException(
+            $"Expected exception {typeof(TException).FullName}, but caught {ex.GetType().FullName}: {ex.Message}");
     }
 
     throw new InvalidOperationException($"Expected exception {typeof(TException).FullName}.");
@@ -641,7 +651,11 @@ sealed class LengthCommand : ICommand
 }
 
 [Command("capture")]
-[CommandTypes([typeof(string), typeof(char), typeof(int), typeof(long), typeof(float), typeof(double), typeof(decimal), typeof(bool)], [])]
+[CommandTypes(
+[
+    typeof(string), typeof(char), typeof(int), typeof(long), typeof(float), typeof(double), typeof(decimal),
+    typeof(bool)
+], [])]
 sealed class CaptureCommand : ICommand
 {
     public Task<ICommandOutput> Execute(ICommandIo input)
@@ -734,7 +748,6 @@ sealed class SurroundCommand : ICommand
 [NoRuntimeInvocation]
 sealed class CompileMarkerCommand : ICommand, ICompileTimePhase
 {
-
     public Task<ICommandOutput> ExecuteCompileTimeAsync(
         IReadOnlyList<ICommandArgument> arguments,
         ICompilationContext context,

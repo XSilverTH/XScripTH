@@ -1,6 +1,4 @@
-using System;
-
-namespace XScripTH.Language;
+namespace XScripTH.Language.Parsing;
 
 public class XScriptParseException : Exception
 {
