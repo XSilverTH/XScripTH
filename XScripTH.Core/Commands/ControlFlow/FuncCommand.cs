@@ -31,7 +31,7 @@ public sealed class FuncCommand : ICommand, ICompileTimePhase
         return Task.FromResult<ICommandOutput>(CommandOutput.Ok());
     }
 
-    public Task<ICommandOutput> Execute(ICommandIo input)
+    public Task<ICommandOutput> Execute(ICommandInput input)
     {
         if (input.Values is not { Count: 2 })
             throw new ArgumentException("func requires exactly two input values.", nameof(input));

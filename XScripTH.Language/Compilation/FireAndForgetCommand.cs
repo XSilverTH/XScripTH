@@ -15,7 +15,7 @@ internal sealed class FireAndForgetCommand : ICommand
         _capturedInvocation = capturedInvocation;
     }
 
-    public Task<ICommandOutput> Execute(ICommandIo input)
+    public Task<ICommandOutput> Execute(ICommandInput input)
     {
         var context = input.ExecutionContext ?? throw new InvalidOperationException("Execution context is required.");
         _ = context.Executor.ExecuteInvocationAsync(_capturedInvocation, context, CancellationToken.None)

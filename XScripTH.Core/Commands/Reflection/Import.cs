@@ -24,7 +24,7 @@ public sealed class Import(ICommandRegistrar registrar) : ICommand, ICompileTime
             : Execute(new CommandInput([rawPath]));
     }
 
-    public Task<ICommandOutput> Execute(ICommandIo input)
+    public Task<ICommandOutput> Execute(ICommandInput input)
     {
         var rawPath = input.Values is { Count: 1 } ? input.Values[0] as string : null;
         if (string.IsNullOrWhiteSpace(rawPath))

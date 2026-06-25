@@ -8,7 +8,7 @@ namespace XScripTH.Core.Commands.Console;
 [CommandTypes([typeof(string)], [])]
 public sealed class Print : ICommand
 {
-    public Task<ICommandOutput> Execute(ICommandIo input)
+    public Task<ICommandOutput> Execute(ICommandInput input)
     {
         System.Console.WriteLine(input.Values![0] as string);
 

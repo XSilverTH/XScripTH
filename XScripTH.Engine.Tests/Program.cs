@@ -195,14 +195,14 @@ static CommandInvocationArgument Nested(ICommandInvocation invocation) => new(in
 static CommandInvocation Invoke(ICommand command, params ICommandArgument[] arguments) =>
     CommandInvocation.FromCommand(command, arguments);
 
-static T SingleValue<T>(ICommandIo io)
+static T SingleValue<T>(ICommandOutput output)
 {
-    if (io.Values is not { Count: 1 })
+    if (output.Values is not { Count: 1 })
     {
-        throw new InvalidOperationException($"Expected exactly one value, got {io.Values?.Count ?? 0}.");
+        throw new InvalidOperationException($"Expected exactly one value, got {output.Values?.Count ?? 0}.");
     }
 
-    return (T)io.Values[0]!;
+    return (T)output.Values[0]!;
 }
 
 static void AssertEqual<T>(T expected, T actual)
@@ -238,7 +238,7 @@ sealed class LiteralStringCommand(string value) : ICommand
 {
     public int ExecuteCount { get; private set; }
 
-    public Task<ICommandOutput> Execute(ICommandIo input)
+    public Task<ICommandOutput> Execute(ICommandInput input)
     {
         ExecuteCount++;
         return Task.FromResult<ICommandOutput>(CommandOutput.Ok([value]));
@@ -250,7 +250,7 @@ sealed class StringLengthCommand : ICommand
 {
     public int ExecuteCount { get; private set; }
 
-    public Task<ICommandOutput> Execute(ICommandIo input)
+    public Task<ICommandOutput> Execute(ICommandInput input)
     {
         ExecuteCount++;
         return Task.FromResult<ICommandOutput>(CommandOutput.Ok([((string)input.Values![0]!).Length]));
@@ -262,7 +262,7 @@ sealed class SurroundCommand : ICommand
 {
     public int ExecuteCount { get; private set; }
 
-    public Task<ICommandOutput> Execute(ICommandIo input)
+    public Task<ICommandOutput> Execute(ICommandInput input)
     {
         ExecuteCount++;
         return Task.FromResult<ICommandOutput>(CommandOutput.Ok([$"<{(string)input.Values![0]!}>"]));
@@ -274,7 +274,7 @@ sealed class NoInputCommand : ICommand
 {
     public int ExecuteCount { get; private set; }
 
-    public Task<ICommandOutput> Execute(ICommandIo input)
+    public Task<ICommandOutput> Execute(ICommandInput input)
     {
         ExecuteCount++;
         return Task.FromResult<ICommandOutput>(CommandOutput.Ok());
@@ -286,7 +286,7 @@ sealed class ErrorStringCommand : ICommand
 {
     public int ExecuteCount { get; private set; }
 
-    public Task<ICommandOutput> Execute(ICommandIo input)
+    public Task<ICommandOutput> Execute(ICommandInput input)
     {
         ExecuteCount++;
         return Task.FromResult<ICommandOutput>(CommandOutput.Error(["bad"]));
@@ -296,7 +296,7 @@ sealed class ErrorStringCommand : ICommand
 [CommandTypes([typeof(CommandBlockArgument)], [typeof(int)])]
 sealed class BlockAcceptingCommand : ICommand
 {
-    public Task<ICommandOutput> Execute(ICommandIo input)
+    public Task<ICommandOutput> Execute(ICommandInput input)
     {
         var block = (CommandBlockArgument)input.Values![0]!;
         return Task.FromResult<ICommandOutput>(CommandOutput.Ok([block.Invocations.Count]));

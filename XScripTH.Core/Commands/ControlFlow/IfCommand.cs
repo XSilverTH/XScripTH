@@ -8,7 +8,7 @@ namespace XScripTH.Core.Commands.ControlFlow;
 [CommandTypes([typeof(bool), typeof(CommandBlockArgument)], [])]
 public sealed class IfCommand : ICommand
 {
-    public async Task<ICommandOutput> Execute(ICommandIo input)
+    public async Task<ICommandOutput> Execute(ICommandInput input)
     {
         if (input.Values is not { Count: 2 })
             throw new ArgumentException("if requires exactly two input values.", nameof(input));

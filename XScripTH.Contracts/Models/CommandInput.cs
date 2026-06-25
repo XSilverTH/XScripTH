@@ -3,7 +3,7 @@ using XScripTH.Contracts.Interfaces;
 namespace XScripTH.Contracts.Models;
 
 public sealed class CommandInput(IReadOnlyList<object?>? values = null, IExecutionContext? executionContext = null)
-    : ICommandIo
+    : ICommandInput
 {
     public IReadOnlyList<object?>? Values { get; init; } = values;
     public IExecutionContext? ExecutionContext { get; init; } = executionContext;

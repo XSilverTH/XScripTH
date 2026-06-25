@@ -9,7 +9,7 @@ namespace XScripTH.Core.Commands.ControlFlow;
 [CommandTypes([typeof(CommandBlockArgument), typeof(CommandBlockArgument)], [])]
 public sealed class WhileCommand : ICommand
 {
-    public async Task<ICommandOutput> Execute(ICommandIo input)
+    public async Task<ICommandOutput> Execute(ICommandInput input)
     {
         if (input.Values is not { Count: 2 })
             throw new ArgumentException("while requires exactly two input values.", nameof(input));

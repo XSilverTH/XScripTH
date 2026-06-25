@@ -620,7 +620,7 @@ public static class BlockingGate
 [CommandTypes([], [typeof(string)])]
 sealed class TextCommand : ICommand
 {
-    public Task<ICommandOutput> Execute(ICommandIo input)
+    public Task<ICommandOutput> Execute(ICommandInput input)
     {
         CommandCounts.TextCount++;
         return Task.FromResult<ICommandOutput>(CommandOutput.Ok(["hello"]));
@@ -631,7 +631,7 @@ sealed class TextCommand : ICommand
 [CommandTypes([], [typeof(int)])]
 sealed class NumberCommand : ICommand
 {
-    public Task<ICommandOutput> Execute(ICommandIo input)
+    public Task<ICommandOutput> Execute(ICommandInput input)
     {
         CommandCounts.NumberCount++;
         return Task.FromResult<ICommandOutput>(CommandOutput.Ok([42]));
@@ -642,7 +642,7 @@ sealed class NumberCommand : ICommand
 [CommandTypes([typeof(string)], [typeof(int)])]
 sealed class LengthCommand : ICommand
 {
-    public Task<ICommandOutput> Execute(ICommandIo input)
+    public Task<ICommandOutput> Execute(ICommandInput input)
     {
         CommandCounts.LengthCount++;
         var str = (string)input.Values![0]!;
@@ -658,7 +658,7 @@ sealed class LengthCommand : ICommand
 ], [])]
 sealed class CaptureCommand : ICommand
 {
-    public Task<ICommandOutput> Execute(ICommandIo input)
+    public Task<ICommandOutput> Execute(ICommandInput input)
     {
         CapturedValues.ExecuteCount++;
         CapturedValues.StringValue = (string)input.Values![0]!;
@@ -677,7 +677,7 @@ sealed class CaptureCommand : ICommand
 [CommandTypes([], [])]
 sealed class BlockingCommand : ICommand
 {
-    public async Task<ICommandOutput> Execute(ICommandIo input)
+    public async Task<ICommandOutput> Execute(ICommandInput input)
     {
         await BlockingGate.Tcs.Task;
         return CommandOutput.Ok();
@@ -688,7 +688,7 @@ sealed class BlockingCommand : ICommand
 [CommandTypes([], [])]
 sealed class MarkCommand : ICommand
 {
-    public Task<ICommandOutput> Execute(ICommandIo input)
+    public Task<ICommandOutput> Execute(ICommandInput input)
     {
         CommandCounts.MarkCount++;
         return Task.FromResult<ICommandOutput>(CommandOutput.Ok());
@@ -699,7 +699,7 @@ sealed class MarkCommand : ICommand
 [CommandTypes([], [typeof(bool)])]
 sealed class TruthCommand : ICommand
 {
-    public Task<ICommandOutput> Execute(ICommandIo input)
+    public Task<ICommandOutput> Execute(ICommandInput input)
     {
         CommandCounts.TruthCount++;
         return Task.FromResult<ICommandOutput>(CommandOutput.Ok([true]));
@@ -710,7 +710,7 @@ sealed class TruthCommand : ICommand
 [CommandTypes([], [])]
 sealed class BodyCommand : ICommand
 {
-    public Task<ICommandOutput> Execute(ICommandIo input)
+    public Task<ICommandOutput> Execute(ICommandInput input)
     {
         CommandCounts.BodyCount++;
         return Task.FromResult<ICommandOutput>(CommandOutput.Ok());
@@ -721,7 +721,7 @@ sealed class BodyCommand : ICommand
 [CommandTypes([typeof(int)], [])]
 sealed class ConsumeIntCommand : ICommand
 {
-    public Task<ICommandOutput> Execute(ICommandIo input)
+    public Task<ICommandOutput> Execute(ICommandInput input)
     {
         CapturedValues.IntValue = (int)input.Values![0]!;
         return Task.FromResult<ICommandOutput>(CommandOutput.Ok());
@@ -732,7 +732,7 @@ sealed class ConsumeIntCommand : ICommand
 [CommandTypes([typeof(string), typeof(string), typeof(string)], [typeof(string)])]
 sealed class SurroundCommand : ICommand
 {
-    public Task<ICommandOutput> Execute(ICommandIo input)
+    public Task<ICommandOutput> Execute(ICommandInput input)
     {
         CommandCounts.SurroundCount++;
         var val1 = (string)input.Values![0]!;
@@ -757,7 +757,7 @@ sealed class CompileMarkerCommand : ICommand, ICompileTimePhase
         return Task.FromResult<ICommandOutput>(CommandOutput.Ok());
     }
 
-    public Task<ICommandOutput> Execute(ICommandIo input)
+    public Task<ICommandOutput> Execute(ICommandInput input)
     {
         CommandCounts.CompileMarkerCount++;
         return Task.FromResult<ICommandOutput>(CommandOutput.Ok());
@@ -768,7 +768,7 @@ sealed class CompileMarkerCommand : ICommand, ICompileTimePhase
 [CommandTypes([], [typeof(bool)])]
 sealed class RegistrarInjectedCommand(ICommandRegistrar registrar) : ICommand
 {
-    public Task<ICommandOutput> Execute(ICommandIo input)
+    public Task<ICommandOutput> Execute(ICommandInput input)
     {
         return Task.FromResult<ICommandOutput>(CommandOutput.Ok([registrar is not null]));
     }
@@ -778,7 +778,7 @@ sealed class RegistrarInjectedCommand(ICommandRegistrar registrar) : ICommand
 [CommandTypes([], [typeof(string)])]
 sealed class ImportedTextCommand : ICommand
 {
-    public Task<ICommandOutput> Execute(ICommandIo input)
+    public Task<ICommandOutput> Execute(ICommandInput input)
     {
         return Task.FromResult<ICommandOutput>(CommandOutput.Ok(["from import"]));
     }

@@ -8,7 +8,7 @@ namespace XScripTH.Core.Commands.ControlFlow;
 [CommandTypes([typeof(object)], [typeof(object)])]
 public sealed class ReturnCommand : ICommand
 {
-    public Task<ICommandOutput> Execute(ICommandIo input)
+    public Task<ICommandOutput> Execute(ICommandInput input)
     {
         return input.Values is not { Count: 1 }
             ? throw new ArgumentException("return requires exactly one input value.", nameof(input))

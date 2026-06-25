@@ -8,7 +8,6 @@ public class CommandOutput(IReadOnlyList<object?>? values = null, CommandStatus 
 {
     public IReadOnlyList<object?>? Values { get; init; } = values;
     public CommandStatus Status { get; init; } = status;
-    public IExecutionContext? ExecutionContext { get; init; } = null;
     public static CommandOutput Ok(IReadOnlyList<object?> values) => new(values);
     public static CommandOutput Error(IReadOnlyList<object?> values) => new(values, CommandStatus.Error);
     public static CommandOutput Ok() => new();
