@@ -16,4 +16,9 @@ public sealed class CompilationContext : ICompilationContext
     }
 
     public ICompileTimeSymbolTable Symbols { get; }
+
+    public ICompilationContext CreateChildScope()
+    {
+        return new CompilationContext(Symbols.CreateChildScope());
+    }
 }

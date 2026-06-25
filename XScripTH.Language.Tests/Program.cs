@@ -45,7 +45,9 @@ var tests = new (string Name, Func<Task> Run)[]
     ("function reference resolves as value", FunctionReferenceResolvesAsValue),
     ("function reference resolves as block", FunctionReferenceResolvesAsBlock),
     ("block output mismatch fails compile", BlockOutputMismatchFailsCompile),
-    ("forward function reference fails compile", ForwardFunctionReferenceFailsCompile)
+    ("forward function reference fails compile", ForwardFunctionReferenceFailsCompile),
+    ("block variable scope shadows without leaking", BlockVariableScopeShadowsWithoutLeaking),
+    ("block variable scope does not leak declarations", BlockVariableScopeDoesNotLeakDeclarations)
 };
 
 foreach (var test in tests)
@@ -469,6 +471,34 @@ static async Task ForwardFunctionReferenceFailsCompile()
     });
 
     AssertEqual("later", exception.FunctionName);
+}
+
+static async Task BlockVariableScopeShadowsWithoutLeaking()
+{
+    CommandCounts.Reset();
+    var engine = new XScripTHEngine();
+    var compiler = CreateControlFlowCompiler(engine);
+    var invocationTasks = await compiler.CompileAsync("var $message, \"outer\"; if true, { var $message, \"longer\"; }; length $message;");
+
+    var outputs = await engine.ExecuteAllAsync(invocationTasks);
+
+    AssertEqual(3, outputs.Count);
+    AssertEqual(CommandStatus.Ok, outputs[0].Status);
+    AssertEqual(CommandStatus.Ok, outputs[1].Status);
+    AssertEqual(5, (int)outputs[2].Values![0]!);
+}
+
+static async Task BlockVariableScopeDoesNotLeakDeclarations()
+{
+    var engine = new XScripTHEngine();
+    var compiler = CreateControlFlowCompiler(engine);
+
+    var exception = await AssertThrowsAsync<XScriptVariableResolutionException>(async () =>
+    {
+        await compiler.CompileAsync("if true, { var $message, \"inner\"; }; length $message;");
+    });
+
+    AssertEqual("message", exception.VariableName);
 }
 
 static XScriptCompiler CreateControlFlowCompiler(XScripTHEngine engine)

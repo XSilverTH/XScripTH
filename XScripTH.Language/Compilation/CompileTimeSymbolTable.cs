@@ -4,8 +4,14 @@ namespace XScripTH.Language;
 
 public sealed class CompileTimeSymbolTable : ICompileTimeSymbolTable
 {
+    private readonly ICompileTimeSymbolTable? _parent;
     private readonly Dictionary<string, Type> _variables = new(StringComparer.Ordinal);
     private readonly Dictionary<string, Type[]> _functions = new(StringComparer.Ordinal);
+
+    public CompileTimeSymbolTable(ICompileTimeSymbolTable? parent = null)
+    {
+        _parent = parent;
+    }
 
     public void DeclareVariable(string name, Type type)
     {
@@ -30,9 +36,17 @@ public sealed class CompileTimeSymbolTable : ICompileTimeSymbolTable
     public bool TryGetVariableType(string name, out Type? type)
     {
         var normalizedName = NormalizeName(name);
-        var found = _variables.TryGetValue(normalizedName, out var storedType);
-        type = storedType;
-        return found;
+        if (_variables.TryGetValue(normalizedName, out var storedType))
+        {
+            type = storedType;
+            return true;
+        }
+        if (_parent is not null)
+        {
+            return _parent.TryGetVariableType(name, out type);
+        }
+        type = null;
+        return false;
     }
 
     public void DeclareFunction(string name, Type[] outputTypes)
@@ -58,7 +72,22 @@ public sealed class CompileTimeSymbolTable : ICompileTimeSymbolTable
     public bool TryGetFunctionOutputTypes(string name, out Type[]? outputTypes)
     {
         var normalizedName = NormalizeFunctionName(name);
-        return _functions.TryGetValue(normalizedName, out outputTypes);
+        if (_functions.TryGetValue(normalizedName, out var storedOutputTypes))
+        {
+            outputTypes = storedOutputTypes;
+            return true;
+        }
+        if (_parent is not null)
+        {
+            return _parent.TryGetFunctionOutputTypes(name, out outputTypes);
+        }
+        outputTypes = null;
+        return false;
+    }
+
+    public ICompileTimeSymbolTable CreateChildScope()
+    {
+        return new CompileTimeSymbolTable(this);
     }
 
     private static string NormalizeName(string name)

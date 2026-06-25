@@ -202,7 +202,7 @@ public sealed class XScriptCompiler
                 throw new XScriptVariableResolutionException(variableArg.Name);
 
             case XScriptBlockArgumentAst blockArg:
-                return await LowerBlockArgumentAsync(blockArg, context, cancellationToken).ConfigureAwait(false);
+                return await LowerBlockArgumentAsync(blockArg, context.CreateChildScope(), cancellationToken).ConfigureAwait(false);
 
             case XScriptFunctionReferenceArgumentAst functionArg:
                 if (context.Symbols.TryGetFunctionOutputTypes(functionArg.Name, out var outputTypes))
@@ -213,9 +213,10 @@ public sealed class XScriptCompiler
                 throw new XScriptFunctionResolutionException(functionArg.Name);
 
             case XScriptCommandArgumentAst commandArg:
-                var nested = await LowerCommandAsync(commandArg.Command, context, cancellationToken).ConfigureAwait(false);
                 if (expectedInputType is not null && IsBlockContainerExpected(expectedInputType))
                 {
+                    var childContext = context.CreateChildScope();
+                    var nested = await LowerCommandAsync(commandArg.Command, childContext, cancellationToken).ConfigureAwait(false);
                     if (nested.RuntimeInvocation is null)
                     {
                         throw new InvalidOperationException($"Command '{nested.Name}' cannot be used as a deferred block because it has no runtime invocation.");
@@ -225,20 +226,22 @@ public sealed class XScriptCompiler
                     var invocation = await invocationTaskTask.ConfigureAwait(false);
                     return new CommandBlockArgument([invocation], nested.OutputTypes);
                 }
-
-                if (nested.CompileTimeOutput is not null)
+                else
                 {
-                    if (nested.CompileTimeOutput.Status != CommandStatus.Ok ||
-                        nested.CompileTimeOutput.Values is not { Count: 1 })
+                    var nested = await LowerCommandAsync(commandArg.Command, context, cancellationToken).ConfigureAwait(false);
+                    if (nested.CompileTimeOutput is not null)
                     {
-                        throw new InvalidOperationException($"Compile-time command '{nested.Name}' used as an argument must complete successfully with exactly one output value.");
+                        if (nested.CompileTimeOutput.Status != CommandStatus.Ok ||
+                            nested.CompileTimeOutput.Values is not { Count: 1 })
+                        {
+                            throw new InvalidOperationException($"Compile-time command '{nested.Name}' used as an argument must complete successfully with exactly one output value.");
+                        }
+
+                        return new CommandValueArgument(nested.CompileTimeOutput.Values[0]);
                     }
 
-                    return new CommandValueArgument(nested.CompileTimeOutput.Values[0]);
+                    return new CommandInvocationArgument(nested.RuntimeInvocation!);
                 }
-
-                return new CommandInvocationArgument(nested.RuntimeInvocation!);
-
             default:
                 throw new InvalidOperationException($"Unsupported AST argument type '{argumentAst?.GetType().FullName}'.");
         }
