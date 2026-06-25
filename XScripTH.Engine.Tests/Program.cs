@@ -16,7 +16,8 @@ var tests = new (string Name, Func<Task> Run)[]
     ("passing block to string executes lazily", PassingBlockToStringExecutesLazily),
     ("passing block as block does not execute first", PassingBlockAsBlockDoesNotExecuteFirst),
     ("function reference to primitive executes stored block", FunctionReferenceToPrimitiveExecutesStoredBlock),
-    ("missing function reference throws name", MissingFunctionReferenceThrowsName)
+    ("missing function reference throws name", MissingFunctionReferenceThrowsName),
+    ("evaluates custom command argument polymorphically", EvaluatesCustomCommandArgumentPolymorphically)
 };
 
 foreach (var test in tests)
@@ -186,6 +187,16 @@ static async Task MissingFunctionReferenceThrowsName()
     }
 }
 
+static async Task EvaluatesCustomCommandArgumentPolymorphically()
+{
+    var invocation = Invoke(new StringLengthCommand(), new ConstantAsyncArgument("hello"));
+
+    var result = await new XScripTHEngine().ExecuteAsync(Program(invocation));
+
+    AssertEqual(CommandStatus.Ok, result.Status);
+    AssertEqual(5, SingleValue<int>(result));
+}
+
 static List<ICommandInvocation> Program(params ICommandInvocation[] invocations) => invocations.ToList();
 
 static CommandValueArgument Value(object? value) => new(value);
@@ -300,5 +311,17 @@ sealed class BlockAcceptingCommand : ICommand
     {
         var block = (CommandBlockArgument)input.Values![0]!;
         return Task.FromResult<ICommandOutput>(CommandOutput.Ok([block.Invocations.Count]));
+    }
+}
+
+sealed class ConstantAsyncArgument(object? value) : ICommandArgument
+{
+    public Task<ArgumentEvaluationResult> EvaluateAsync(
+        ICommandExecutor executor,
+        IExecutionContext executionContext,
+        Type? expectedInputType,
+        CancellationToken cancellationToken)
+    {
+        return Task.FromResult(new ArgumentEvaluationResult(value));
     }
 }

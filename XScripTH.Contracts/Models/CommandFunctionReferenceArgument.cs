@@ -20,4 +20,17 @@ public sealed class CommandFunctionReferenceArgument : ICommandArgument
     public string Name { get; }
 
     public Type[] OutputTypes { get; }
+
+    public async Task<ArgumentEvaluationResult> EvaluateAsync(
+        ICommandExecutor executor,
+        IExecutionContext executionContext,
+        Type? expectedInputType,
+        CancellationToken cancellationToken)
+    {
+        if (!executionContext.TryGetFunction(Name, out var block) || block is null)
+            throw new InvalidOperationException($"Function '@{Name}' has not been assigned.");
+
+        return await block.EvaluateAsync(executor, executionContext, expectedInputType, cancellationToken)
+            .ConfigureAwait(false);
+    }
 }
