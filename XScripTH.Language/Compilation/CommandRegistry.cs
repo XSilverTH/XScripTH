@@ -18,6 +18,9 @@ public sealed class CommandRegistry : ICommandRegistry, ICommandRegistrar
         var variableStore = new VariableStore();
         RegisterService(typeof(VariableStore), variableStore);
         RegisterService(typeof(IVariableStore), variableStore);
+        var functionStore = new FunctionStore();
+        RegisterService(typeof(FunctionStore), functionStore);
+        RegisterService(typeof(IFunctionStore), functionStore);
         RegisterService(typeof(CommandRegistry), this);
         RegisterService(typeof(ICommandRegistry), this);
         RegisterService(typeof(ICommandRegistrar), this);
@@ -99,19 +102,17 @@ public sealed class CommandRegistry : ICommandRegistry, ICommandRegistrar
                 continue;
             }
 
-            var constructor = SelectResolvableConstructor(type);
-            if (constructor == null)
-            {
-                continue;
-            }
-
             var commandAttr = type.GetCustomAttribute<CommandAttribute>();
             var name = commandAttr?.Name ?? type.Name;
-            var parameterTypes = constructor.GetParameters().Select(parameter => parameter.ParameterType).ToArray();
 
             Register(name, () =>
             {
-                var resolvedServices = parameterTypes.Select(parameterType => _services[parameterType]).ToArray();
+                var constructor = SelectResolvableConstructor(type)
+                    ?? throw new InvalidOperationException($"Command type '{type.FullName}' has no resolvable constructor.");
+                var resolvedServices = constructor
+                    .GetParameters()
+                    .Select(parameter => _services[parameter.ParameterType])
+                    .ToArray();
                 return (ICommand)constructor.Invoke(resolvedServices);
             });
         }

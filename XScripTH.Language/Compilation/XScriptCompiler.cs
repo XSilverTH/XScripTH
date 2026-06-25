@@ -20,6 +20,7 @@ public sealed class XScriptCompiler
     private readonly XScriptParser _parser;
     private readonly ICommandExecutor? _executor;
     private readonly IVariableStore _variableStore;
+    private readonly IFunctionStore _functionStore;
 
     public XScriptCompiler(
         ICommandRegistry commandRegistry,
@@ -33,9 +34,21 @@ public sealed class XScriptCompiler
         _typeChecker = typeChecker ?? CommandTypeChecker.Default;
         _parser = parser ?? new XScriptParser();
         _executor = executor;
-        _variableStore = commandRegistry is CommandRegistry registry
-            ? registry.GetRequiredService<IVariableStore>()
-            : new VariableStore();
+        if (commandRegistry is CommandRegistry registry)
+        {
+            if (executor is not null && !registry.TryGetService<ICommandExecutor>(out _))
+            {
+                registry.RegisterService<ICommandExecutor>(executor);
+            }
+
+            _variableStore = registry.GetRequiredService<IVariableStore>();
+            _functionStore = registry.GetRequiredService<IFunctionStore>();
+        }
+        else
+        {
+            _variableStore = new VariableStore();
+            _functionStore = new FunctionStore();
+        }
     }
 
     public async Task<IReadOnlyList<Task<ICommandInvocation>>> CompileAsync(
