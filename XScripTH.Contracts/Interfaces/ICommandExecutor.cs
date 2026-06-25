@@ -3,20 +3,20 @@ namespace XScripTH.Contracts.Interfaces;
 public interface ICommandExecutor
 {
     Task<ICommandOutput> ExecuteAsync(
-        IEnumerable<Task<ICommandInvocation>> commands,
+        IEnumerable<ICommandInvocation> commands,
         CancellationToken cancellationToken = default);
 
     Task<ICommandOutput> ExecuteAsync(
-        IEnumerable<Task<ICommandInvocation>> commands,
+        IEnumerable<ICommandInvocation> commands,
         IExecutionContext executionContext,
         CancellationToken cancellationToken = default);
 
     Task<IReadOnlyList<ICommandOutput>> ExecuteAllAsync(
-        IEnumerable<Task<ICommandInvocation>> commands,
+        IEnumerable<ICommandInvocation> commands,
         CancellationToken cancellationToken = default);
 
     Task<IReadOnlyList<ICommandOutput>> ExecuteAllAsync(
-        IEnumerable<Task<ICommandInvocation>> commands,
+        IEnumerable<ICommandInvocation> commands,
         IExecutionContext executionContext,
         CancellationToken cancellationToken = default);
 

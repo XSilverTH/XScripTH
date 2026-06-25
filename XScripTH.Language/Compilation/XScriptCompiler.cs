@@ -99,9 +99,7 @@ public sealed class XScriptCompiler
             return Task.FromResult(Task.FromResult(invocation));
         }
 
-        var executor = _executor
-            ?? throw new InvalidOperationException("Fire-and-forget commands require an ICommandExecutor.");
-        ICommand fireAndForgetCommand = new FireAndForgetCommand(invocation, executor);
+        ICommand fireAndForgetCommand = new FireAndForgetCommand(invocation);
         ICommandInvocation fireAndForgetInvocation = new CommandInvocation(
             fireAndForgetCommand,
             Array.Empty<ICommandArgument>()

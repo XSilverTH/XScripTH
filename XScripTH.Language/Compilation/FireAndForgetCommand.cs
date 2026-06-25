@@ -11,19 +11,17 @@ namespace XScripTH.Language;
 internal sealed class FireAndForgetCommand : ICommand
 {
     private readonly ICommandInvocation _capturedInvocation;
-    private readonly ICommandExecutor _executor;
 
-    public FireAndForgetCommand(ICommandInvocation capturedInvocation, ICommandExecutor executor)
+    public FireAndForgetCommand(ICommandInvocation capturedInvocation)
     {
         ArgumentNullException.ThrowIfNull(capturedInvocation);
-        ArgumentNullException.ThrowIfNull(executor);
         _capturedInvocation = capturedInvocation;
-        _executor = executor;
     }
 
     public Task<ICommandOutput> Execute(ICommandIo input)
     {
-        _ = _executor.ExecuteInvocationAsync(_capturedInvocation, CancellationToken.None)
+        var context = input.ExecutionContext ?? throw new InvalidOperationException("Execution context is required.");
+        _ = context.Executor.ExecuteInvocationAsync(_capturedInvocation, context, CancellationToken.None)
             .ContinueWith(t =>
             {
                 if (t.IsFaulted)

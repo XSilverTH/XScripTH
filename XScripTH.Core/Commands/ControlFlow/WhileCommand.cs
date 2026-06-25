@@ -10,14 +10,6 @@ namespace XScripTH.Core.Commands.ControlFlow;
 [CommandTypes([typeof(CommandBlockArgument), typeof(CommandBlockArgument)], [])]
 public sealed class WhileCommand : ICommand
 {
-    private readonly ICommandExecutor _executor;
-
-    public WhileCommand(ICommandExecutor executor)
-    {
-        ArgumentNullException.ThrowIfNull(executor);
-        _executor = executor;
-    }
-
     public async Task<ICommandOutput> Execute(ICommandIo input)
     {
         if (input.Values is not { Count: 2 })
@@ -34,11 +26,11 @@ public sealed class WhileCommand : ICommand
         {
             throw new ArgumentException("while requires a body command block as its second input value.", nameof(input));
         }
-        var context = input.ExecutionContext ?? new XScriptExecutionContext(_executor);
+        var context = input.ExecutionContext ?? throw new InvalidOperationException("Execution context is required.");
         ICommandOutput? lastBodyOutput = null;
         while (true)
         {
-            var conditionOutput = await _executor.ExecuteAsync(condition.Invocations.Select(Task.FromResult), context).ConfigureAwait(false);
+            var conditionOutput = await context.Executor.ExecuteAsync(condition.Invocations, context.CreateChildScope()).ConfigureAwait(false);
             if (conditionOutput.Status == CommandStatus.Error)
             {
                 return conditionOutput;
@@ -54,7 +46,7 @@ public sealed class WhileCommand : ICommand
                 return lastBodyOutput ?? CommandOutput.Ok();
             }
 
-            lastBodyOutput = await _executor.ExecuteAsync(body.Invocations.Select(Task.FromResult), context).ConfigureAwait(false);
+            lastBodyOutput = await context.Executor.ExecuteAsync(body.Invocations, context.CreateChildScope()).ConfigureAwait(false);
             if (lastBodyOutput.Status == CommandStatus.Error)
             {
                 return lastBodyOutput;

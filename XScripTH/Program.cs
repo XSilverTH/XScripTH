@@ -13,6 +13,6 @@ var engine = new XScripTHEngine();
 var registry = CommandRegistry.FromAssemblies(typeof(Print).Assembly);
 var compiler = new XScriptCompiler(registry, executor: engine);
 var invocations = await compiler.CompileAsync(source);
-var output = await engine.ExecuteAsync(invocations);
+var output = await engine.ExecuteAsync(invocations.Select(t => t.Result));
 
 return (int)output.Status;

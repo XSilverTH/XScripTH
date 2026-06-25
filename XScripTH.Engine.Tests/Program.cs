@@ -183,7 +183,7 @@ static async Task MissingFunctionReferenceThrowsName()
     }
 }
 
-static List<Task<ICommandInvocation>> Program(params ICommandInvocation[] invocations) => invocations.Select(Task.FromResult).ToList();
+static List<ICommandInvocation> Program(params ICommandInvocation[] invocations) => invocations.ToList();
 
 static CommandValueArgument Value(object? value) => new(value);
 

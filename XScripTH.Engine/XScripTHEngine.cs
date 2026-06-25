@@ -10,14 +10,14 @@ namespace XScripTH.Engine;
 public sealed class XScripTHEngine : ICommandExecutor
 {
     public async Task<ICommandOutput> ExecuteAsync(
-        IEnumerable<Task<ICommandInvocation>> commands,
+        IEnumerable<ICommandInvocation> commands,
         CancellationToken cancellationToken = default)
     {
         return await ExecuteAsync(commands, new XScriptExecutionContext(this), cancellationToken).ConfigureAwait(false);
     }
 
     public async Task<ICommandOutput> ExecuteAsync(
-        IEnumerable<Task<ICommandInvocation>> commands,
+        IEnumerable<ICommandInvocation> commands,
         IExecutionContext executionContext,
         CancellationToken cancellationToken = default)
     {
@@ -26,14 +26,14 @@ public sealed class XScripTHEngine : ICommandExecutor
     }
 
     public async Task<IReadOnlyList<ICommandOutput>> ExecuteAllAsync(
-        IEnumerable<Task<ICommandInvocation>> commands,
+        IEnumerable<ICommandInvocation> commands,
         CancellationToken cancellationToken = default)
     {
         return await ExecuteAllAsync(commands, new XScriptExecutionContext(this), cancellationToken).ConfigureAwait(false);
     }
 
     public async Task<IReadOnlyList<ICommandOutput>> ExecuteAllAsync(
-        IEnumerable<Task<ICommandInvocation>> commands,
+        IEnumerable<ICommandInvocation> commands,
         IExecutionContext executionContext,
         CancellationToken cancellationToken = default)
     {
@@ -41,10 +41,9 @@ public sealed class XScripTHEngine : ICommandExecutor
         ArgumentNullException.ThrowIfNull(executionContext);
 
         var outputs = new List<ICommandOutput>();
-        foreach (var invocationTask in commands)
+        foreach (var invocation in commands)
         {
             cancellationToken.ThrowIfCancellationRequested();
-            var invocation = await invocationTask.WaitAsync(cancellationToken).ConfigureAwait(false);
             var output = await ExecuteInvocationAsync(invocation, executionContext, cancellationToken).ConfigureAwait(false);
 
             outputs.Add(output);
@@ -160,7 +159,7 @@ public sealed class XScripTHEngine : ICommandExecutor
             return new ArgumentResolution(block, null);
         }
 
-        var output = await ExecuteAsync(block.Invocations.Select(Task.FromResult), executionContext, cancellationToken).ConfigureAwait(false);
+        var output = await ExecuteAsync(block.Invocations, executionContext.CreateChildScope(), cancellationToken).ConfigureAwait(false);
         if (output.Status == CommandStatus.Error)
         {
             return new ArgumentResolution(null, output);

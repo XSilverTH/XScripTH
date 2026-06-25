@@ -9,14 +9,6 @@ namespace XScripTH.Core.Commands.ControlFlow;
 [CommandTypes([typeof(bool), typeof(CommandBlockArgument)], [])]
 public sealed class IfCommand : ICommand
 {
-    private readonly ICommandExecutor _executor;
-
-    public IfCommand(ICommandExecutor executor)
-    {
-        ArgumentNullException.ThrowIfNull(executor);
-        _executor = executor;
-    }
-
     public async Task<ICommandOutput> Execute(ICommandIo input)
     {
         if (input.Values is not { Count: 2 })
@@ -36,8 +28,8 @@ public sealed class IfCommand : ICommand
 
         if (condition)
         {
-            var context = input.ExecutionContext ?? new XScriptExecutionContext(_executor);
-            return await _executor.ExecuteAsync(body.Invocations.Select(Task.FromResult), context).ConfigureAwait(false);
+            var context = input.ExecutionContext ?? throw new InvalidOperationException("Execution context is required.");
+            return await context.Executor.ExecuteAsync(body.Invocations, context.CreateChildScope()).ConfigureAwait(false);
         }
         return CommandOutput.Ok();
     }

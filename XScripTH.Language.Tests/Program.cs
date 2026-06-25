@@ -520,6 +520,43 @@ static void AssertPath(IReadOnlyList<int> expected, IReadOnlyList<int> actual)
 
 static string FormatPath(IReadOnlyList<int> path) => string.Join('.', path.Select(index => $"[{index}]"));
 
+public static class TestExecutorExtensions
+{
+    public static Task<IReadOnlyList<ICommandOutput>> ExecuteAllAsync(
+        this ICommandExecutor executor,
+        IEnumerable<Task<ICommandInvocation>> commands,
+        CancellationToken cancellationToken = default)
+    {
+        return executor.ExecuteAllAsync(commands.Select(t => t.Result), cancellationToken);
+    }
+
+    public static Task<IReadOnlyList<ICommandOutput>> ExecuteAllAsync(
+        this ICommandExecutor executor,
+        IEnumerable<Task<ICommandInvocation>> commands,
+        IExecutionContext executionContext,
+        CancellationToken cancellationToken = default)
+    {
+        return executor.ExecuteAllAsync(commands.Select(t => t.Result), executionContext, cancellationToken);
+    }
+
+    public static Task<ICommandOutput> ExecuteAsync(
+        this ICommandExecutor executor,
+        IEnumerable<Task<ICommandInvocation>> commands,
+        CancellationToken cancellationToken = default)
+    {
+        return executor.ExecuteAsync(commands.Select(t => t.Result), cancellationToken);
+    }
+
+    public static Task<ICommandOutput> ExecuteAsync(
+        this ICommandExecutor executor,
+        IEnumerable<Task<ICommandInvocation>> commands,
+        IExecutionContext executionContext,
+        CancellationToken cancellationToken = default)
+    {
+        return executor.ExecuteAsync(commands.Select(t => t.Result), executionContext, cancellationToken);
+    }
+}
+
 public static class CapturedValues
 {
     public static string? StringValue;
