@@ -27,22 +27,30 @@ public sealed class XScriptCompiler
         _parser = parser ?? new XScriptParser();
     }
 
-    public async Task<IReadOnlyList<ICommandInvocation>> CompileAsync(
+    public Task<IReadOnlyList<ICommandInvocation>> CompileAsync(
         string source,
         CancellationToken cancellationToken = default)
     {
+        return CompileAsync(source, new CompilationContext(), cancellationToken);
+    }
+
+    public async Task<IReadOnlyList<ICommandInvocation>> CompileAsync(
+        string source,
+        ICompilationContext context,
+        CancellationToken cancellationToken = default)
+    {
         ArgumentNullException.ThrowIfNull(source);
+        ArgumentNullException.ThrowIfNull(context);
         var ast = Parse(source);
-        return await CompileAsync(ast, cancellationToken).ConfigureAwait(false);
+        return await CompileAsync(ast, context, cancellationToken).ConfigureAwait(false);
     }
 
     private async Task<IReadOnlyList<ICommandInvocation>> CompileAsync(
         XScriptProgramAst ast,
+        ICompilationContext context,
         CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(ast);
-        var context = new CompilationContext();
-
         var bound = await BindProgramAsync(ast.Commands, context, cancellationToken).ConfigureAwait(false);
 
         await TypeCheckAsync(bound, cancellationToken).ConfigureAwait(false);
