@@ -27,7 +27,9 @@ public sealed class CommandVariableArgument : ICommandArgument
         Type? expectedInputType,
         CancellationToken cancellationToken)
     {
-        if (expectedInputType?.IsAssignableFrom(typeof(CommandVariableArgument)) == true)
+        if (expectedInputType is not null &&
+            expectedInputType != typeof(object) &&
+            expectedInputType.IsAssignableFrom(typeof(CommandVariableArgument)))
             return Task.FromResult(new ArgumentEvaluationResult(this));
 
         return !executionContext.TryGetVariable(Name, out var value)

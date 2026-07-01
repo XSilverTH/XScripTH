@@ -12,7 +12,8 @@ var tests = new (string Name, Func<Task> Run)[]
     ("syntax errors return syntax exit code and no stack trace", SyntaxErrorsReturnSyntaxExitCodeAndNoStacktrace),
     ("unknown commands return symbol exit code", UnknownCommandsReturnSymbolExitCode),
     ("type errors return type exit code", TypeErrorsReturnTypeExitCode),
-    ("usage errors return usage exit code", UsageErrorsReturnUsageExitCode)
+    ("usage errors return usage exit code", UsageErrorsReturnUsageExitCode),
+    ("expressions work through check and run", ExpressionsWorkThroughCheckAndRun)
 };
 
 foreach (var test in tests)
@@ -126,6 +127,27 @@ static async Task UsageErrorsReturnUsageExitCode()
         AssertEqual(2, exitCode); // UsageError
         AssertContains("Usage error", stderr);
         AssertContains("Usage:", stderr);
+    }
+}
+
+static async Task ExpressionsWorkThroughCheckAndRun()
+{
+    var scriptPath = await CreateTemporaryScriptAsync("if ((1 + 2) == 3), { print \"ok\"; };");
+    try
+    {
+        var (checkExitCode, checkStdout, checkStderr) = await RunCliAsync(new[] { "check", scriptPath });
+        AssertEqual(0, checkExitCode);
+        AssertContains($"OK {scriptPath}", checkStdout);
+        AssertEqual("", checkStderr.Trim());
+
+        var (runExitCode, runStdout, runStderr) = await RunCliAsync(new[] { "run", scriptPath });
+        AssertEqual(0, runExitCode);
+        AssertContains("ok", runStdout);
+        AssertEqual("", runStderr.Trim());
+    }
+    finally
+    {
+        DeleteTemporaryScript(scriptPath);
     }
 }
 

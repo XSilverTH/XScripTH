@@ -1,4 +1,5 @@
 using System.Reflection;
+using XScripTH.Contracts.Expressions;
 using XScripTH.Contracts.Attributes;
 using XScripTH.Contracts.Enums;
 using XScripTH.Contracts.Interfaces;
@@ -99,9 +100,11 @@ public sealed class XScriptCompiler
                 cancellationToken,
                 allowFunctionParameters: commandAst.Name == "func" && index == 1).ConfigureAwait(false));
 
-        var staticOutputTypes = commandAst.Name == "return"
-            ? commandAst.Arguments.Count > 0 ? GetArgumentOutputTypes(arguments[0]) : []
-            : null;
+        Type[]? staticOutputTypes = null;
+        if (TryGetExpressionCommandOutputTypes(commandAst.Name, arguments, out var expressionOutputTypes))
+            staticOutputTypes = expressionOutputTypes;
+        else if (commandAst.Name == "return")
+            staticOutputTypes = commandAst.Arguments.Count > 0 ? GetArgumentOutputTypes(arguments[0]) : [];
         if (staticOutputTypes is { Length: 1 })
             staticOutputTypes = [staticOutputTypes[0]];
 
@@ -216,11 +219,78 @@ public sealed class XScriptCompiler
 
                     return new CommandValueArgument(nested.CompileTimeOutput.Values[0]);
                 }
+            case XScriptUnaryExpressionAst unaryExpression:
+                return await LowerExpressionAsync(unaryExpression, expectedInputType, context, cancellationToken, allowFunctionParameters)
+                    .ConfigureAwait(false);
+
+            case XScriptBinaryExpressionAst binaryExpression:
+                return await LowerExpressionAsync(binaryExpression, expectedInputType, context, cancellationToken, allowFunctionParameters)
+                    .ConfigureAwait(false);
+
             default:
                 throw new InvalidOperationException(
                     $"Unsupported AST argument type '{argumentAst.GetType().FullName}'.");
         }
     }
+
+    private Task<ICommandArgument> LowerExpressionAsync(
+        XScriptUnaryExpressionAst expression,
+        Type? expectedInputType,
+        ICompilationContext context,
+        CancellationToken cancellationToken,
+        bool allowFunctionParameters)
+    {
+        var commandAst = new XScriptCommandAst(
+            GetExpressionCommandName(expression.Operator),
+            [expression.Operand],
+            XScriptCommandTerminator.Await);
+        return LowerArgumentAsync(
+            new XScriptCommandArgumentAst(commandAst),
+            expectedInputType,
+            context,
+            cancellationToken,
+            allowFunctionParameters);
+    }
+
+    private Task<ICommandArgument> LowerExpressionAsync(
+        XScriptBinaryExpressionAst expression,
+        Type? expectedInputType,
+        ICompilationContext context,
+        CancellationToken cancellationToken,
+        bool allowFunctionParameters)
+    {
+        var commandAst = new XScriptCommandAst(
+            GetExpressionCommandName(expression.Operator),
+            [expression.Left, expression.Right],
+            XScriptCommandTerminator.Await);
+        return LowerArgumentAsync(
+            new XScriptCommandArgumentAst(commandAst),
+            expectedInputType,
+            context,
+            cancellationToken,
+            allowFunctionParameters);
+    }
+
+    private static string GetExpressionCommandName(XScriptExpressionOperator expressionOperator) =>
+        expressionOperator switch
+        {
+            XScriptExpressionOperator.Add => "add",
+            XScriptExpressionOperator.Subtract => "subtract",
+            XScriptExpressionOperator.Multiply => "multiply",
+            XScriptExpressionOperator.Divide => "divide",
+            XScriptExpressionOperator.Modulo => "modulo",
+            XScriptExpressionOperator.Negate => "negate",
+            XScriptExpressionOperator.Equal => "equal",
+            XScriptExpressionOperator.NotEqual => "not-equal",
+            XScriptExpressionOperator.LessThan => "less-than",
+            XScriptExpressionOperator.LessThanOrEqual => "less-than-or-equal",
+            XScriptExpressionOperator.GreaterThan => "greater-than",
+            XScriptExpressionOperator.GreaterThanOrEqual => "greater-than-or-equal",
+            XScriptExpressionOperator.And => "and",
+            XScriptExpressionOperator.Or => "or",
+            XScriptExpressionOperator.Not => "not",
+            _ => throw new InvalidOperationException($"Unsupported expression operator '{expressionOperator}'.")
+        };
 
     private async Task<CommandBlockArgument> LowerBlockArgumentAsync(
         XScriptBlockArgumentAst blockAst,
@@ -301,6 +371,105 @@ public sealed class XScriptCompiler
 
     private static bool IsBlockContainerExpected(Type expectedInputType) =>
         expectedInputType != typeof(object) && expectedInputType.IsAssignableFrom(typeof(CommandBlockArgument));
+
+    private bool TryGetExpressionCommandOutputTypes(
+        string commandName,
+        IReadOnlyList<ICommandArgument> arguments,
+        out Type[] outputTypes)
+    {
+        outputTypes = [];
+
+        switch (commandName)
+        {
+            case "add":
+            case "subtract":
+            case "multiply":
+            case "divide":
+            case "modulo":
+            {
+                RequireExpressionOperandCount(commandName, arguments, 2);
+                var left = RequireSingleExpressionOperandType(commandName, arguments, 0);
+                var right = RequireSingleExpressionOperandType(commandName, arguments, 1);
+                RequireNumericExpressionOperands(commandName, left, right);
+                outputTypes = [XScriptExpressionTypeRules.PromoteNumeric(left, right)];
+                return true;
+            }
+
+            case "negate":
+            {
+                RequireExpressionOperandCount(commandName, arguments, 1);
+                var operand = RequireSingleExpressionOperandType(commandName, arguments, 0);
+                RequireNumericExpressionOperands(commandName, operand);
+                outputTypes = [XScriptExpressionTypeRules.PromoteUnaryNumeric(operand)];
+                return true;
+            }
+
+            case "less-than":
+            case "less-than-or-equal":
+            case "greater-than":
+            case "greater-than-or-equal":
+            {
+                RequireExpressionOperandCount(commandName, arguments, 2);
+                var left = RequireSingleExpressionOperandType(commandName, arguments, 0);
+                var right = RequireSingleExpressionOperandType(commandName, arguments, 1);
+                RequireNumericExpressionOperands(commandName, left, right);
+                outputTypes = [typeof(bool)];
+                return true;
+            }
+
+            case "equal":
+            case "not-equal":
+                RequireExpressionOperandCount(commandName, arguments, 2);
+                _ = RequireSingleExpressionOperandType(commandName, arguments, 0);
+                _ = RequireSingleExpressionOperandType(commandName, arguments, 1);
+                outputTypes = [typeof(bool)];
+                return true;
+
+            case "and":
+            case "or":
+                RequireExpressionOperandCount(commandName, arguments, 2);
+                outputTypes = [typeof(bool)];
+                return true;
+
+            case "not":
+                RequireExpressionOperandCount(commandName, arguments, 1);
+                outputTypes = [typeof(bool)];
+                return true;
+
+            default:
+                return false;
+        }
+    }
+
+    private static void RequireExpressionOperandCount(
+        string commandName,
+        IReadOnlyList<ICommandArgument> arguments,
+        int expectedCount)
+    {
+        if (arguments.Count != expectedCount)
+            throw new InvalidOperationException(
+                $"Expression command '{commandName}' requires {expectedCount} operand(s).");
+    }
+
+    private Type RequireSingleExpressionOperandType(
+        string commandName,
+        IReadOnlyList<ICommandArgument> arguments,
+        int index)
+    {
+        var outputTypes = GetArgumentOutputTypes(arguments[index]);
+        if (outputTypes.Length != 1)
+            throw new InvalidOperationException(
+                $"Expression command '{commandName}' requires operand {index} to produce exactly one value.");
+
+        return outputTypes[0];
+    }
+
+    private static void RequireNumericExpressionOperands(string commandName, params Type[] operandTypes)
+    {
+        if (operandTypes.Any(type => !XScriptExpressionTypeRules.IsNumeric(type)))
+            throw new InvalidOperationException(
+                $"Expression command '{commandName}' requires numeric operands.");
+    }
 
     private Type[] GetArgumentOutputTypes(ICommandArgument argument)
     {

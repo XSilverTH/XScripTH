@@ -60,7 +60,16 @@ var tests = new (string Name, Func<Task> Run)[]
     ("param outside func block fails compile", ParamOutsideFuncBlockFailsCompile),
     ("late param in func block fails compile", LateParamInFuncBlockFailsCompile),
     ("parameterized function reference fails compile", ParameterizedFunctionReferenceFailsCompile),
-    ("function call double semicolon runs fire and forget", FunctionCallDoubleSemicolonRunsFireAndForget)
+    ("function call double semicolon runs fire and forget", FunctionCallDoubleSemicolonRunsFireAndForget),
+    ("parenthesized math expressions follow precedence", ParenthesizedMathExpressionsFollowPrecedence),
+    ("nested parentheses reprioritize math expressions", NestedParenthesesReprioritizeMathExpressions),
+    ("boolean expressions feed control flow", BooleanExpressionsFeedControlFlow),
+    ("expressions accept nested commands functions and blocks", ExpressionsAcceptNestedCommandsFunctionsAndBlocks),
+    ("direct expression commands infer static output types", DirectExpressionCommandsInferStaticOutputTypes),
+    ("expressions resolve variables at runtime", ExpressionsResolveVariablesAtRuntime),
+    ("unparenthesized infix syntax is rejected", UnparenthesizedInfixSyntaxIsRejected),
+    ("expression numeric type mismatch fails compile", ExpressionNumericTypeMismatchFailsCompile),
+    ("boolean operator rejects non bool operands", BooleanOperatorRejectsNonBoolOperands)
 };
 
 foreach (var test in tests)
@@ -664,6 +673,122 @@ static async Task FunctionCallDoubleSemicolonRunsFireAndForget()
     var outputs = await executeTask;
     AssertEqual(3, outputs.Count);
     AssertEqual(2, CommandCounts.MarkCount);
+}
+
+static async Task ParenthesizedMathExpressionsFollowPrecedence()
+{
+    CapturedValues.Reset();
+    var engine = new XScripTHEngine();
+    var compiler = CreateControlFlowCompiler(engine);
+    var invocations = await compiler.CompileAsync("consume-int (2 + 3 * 4);");
+
+    await engine.ExecuteAllAsync(invocations);
+
+    AssertEqual(14, CapturedValues.IntValue);
+}
+
+static async Task NestedParenthesesReprioritizeMathExpressions()
+{
+    CapturedValues.Reset();
+    var engine = new XScripTHEngine();
+    var compiler = CreateControlFlowCompiler(engine);
+    var invocations = await compiler.CompileAsync("consume-int ((2 + 3) * 4);");
+
+    await engine.ExecuteAllAsync(invocations);
+
+    AssertEqual(20, CapturedValues.IntValue);
+}
+
+static async Task BooleanExpressionsFeedControlFlow()
+{
+    CommandCounts.Reset();
+    var engine = new XScripTHEngine();
+    var compiler = CreateControlFlowCompiler(engine);
+    var invocations = await compiler.CompileAsync("if ((2 + 3) > 4 && !false), { mark; };");
+
+    await engine.ExecuteAllAsync(invocations);
+
+    AssertEqual(1, CommandCounts.MarkCount);
+}
+
+static async Task ExpressionsAcceptNestedCommandsFunctionsAndBlocks()
+{
+    CapturedValues.Reset();
+    CommandCounts.Reset();
+    var engine = new XScripTHEngine();
+    var compiler = CreateControlFlowCompiler(engine);
+    var invocations = await compiler.CompileAsync("func \"two\", { return 2; }; consume-int (@two; + number; + { return 1; });");
+
+    await engine.ExecuteAllAsync(invocations);
+
+    AssertEqual(45, CapturedValues.IntValue);
+    AssertEqual(1, CommandCounts.NumberCount);
+}
+
+static async Task DirectExpressionCommandsInferStaticOutputTypes()
+{
+    CapturedValues.Reset();
+    var engine = new XScripTHEngine();
+    var compiler = CreateControlFlowCompiler(engine);
+    var invocations = await compiler.CompileAsync("var $answer, add 20, 22; consume-int $answer;");
+
+    await engine.ExecuteAllAsync(invocations);
+
+    AssertEqual(42, CapturedValues.IntValue);
+}
+
+static async Task ExpressionsResolveVariablesAtRuntime()
+{
+    CommandCounts.Reset();
+    var engine = new XScripTHEngine();
+    var compiler = CreateControlFlowCompiler(engine);
+    var invocations = await compiler.CompileAsync("var $value, (2 + 3 * 4); if ($value == 14), { mark; };");
+
+    await engine.ExecuteAllAsync(invocations);
+
+    AssertEqual(1, CommandCounts.MarkCount);
+}
+
+static async Task UnparenthesizedInfixSyntaxIsRejected()
+{
+    var engine = new XScripTHEngine();
+    var compiler = CreateControlFlowCompiler(engine);
+
+    await AssertThrowsAsync<XScriptParseException>(async () =>
+    {
+        await compiler.CompileAsync("consume-int 1 + 2;");
+    });
+}
+
+static async Task ExpressionNumericTypeMismatchFailsCompile()
+{
+    var engine = new XScripTHEngine();
+    var compiler = CreateControlFlowCompiler(engine);
+
+    var exception = await AssertThrowsAsync<InvalidOperationException>(async () =>
+    {
+        await compiler.CompileAsync("consume-int (1m + 2.0d);");
+    });
+
+    if (!exception.Message.Contains("Cannot mix decimal operands", StringComparison.OrdinalIgnoreCase))
+    {
+        throw new InvalidOperationException($"Expected message containing 'Cannot mix decimal operands', but got: '{exception.Message}'");
+    }
+}
+
+static async Task BooleanOperatorRejectsNonBoolOperands()
+{
+    var engine = new XScripTHEngine();
+    var compiler = CreateControlFlowCompiler(engine);
+
+    var exception = await AssertThrowsAsync<CommandTypeCheckException>(async () =>
+    {
+        await compiler.CompileAsync("if (1 && true), { mark; };");
+    });
+
+    AssertEqual(1, exception.Errors.Count);
+    AssertEqual(typeof(bool), exception.Errors[0].ExpectedType);
+    AssertEqual(typeof(int), exception.Errors[0].ActualType);
 }
 
 static XScriptCompiler CreateControlFlowCompiler(XScripTHEngine engine)

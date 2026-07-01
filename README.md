@@ -23,7 +23,7 @@ The `XScripTHEngine` executes the compiled `ICommandInvocation` list. It process
 
 ## Syntax Structure & Language Rules
 
-XScripTH is purely command-driven. There are no operators like `+` or `=` natively in the language grammar; everything is a command that takes arguments (comma-separated) and returns outputs.
+XScripTH is command-driven. Arguments are comma-separated command inputs; parenthesized math and boolean expressions are source-level syntax that compile down to ordinary commands before runtime execution.
 
 ### 1. Commands and Terminators
 
@@ -77,7 +77,29 @@ surround "[", text;, "]";
 
 ```
 
-### 4. Variables
+### 4. Expressions
+
+Expressions must be enclosed in parentheses when used as command arguments. Unparenthesized infix syntax is invalid.
+
+```xscript
+consume-int (2 + 3 * 4);
+if (($count > 0) && truth;), {
+    print "count is positive";
+};
+```
+
+Supported operators are `!`, unary `-`, `*`, `/`, `%`, `+`, `-`, `<`, `<=`, `>`, `>=`, `==`, `!=`, `&&`, and `||`.
+
+Expression terms can be literals, variables, nested commands with semicolons, direct function calls, function references, blocks, and nested parenthesized expressions:
+
+```xscript
+func "two", { return 2; };
+var $answer, (@two; + number; + { return 1; });
+```
+
+Expressions lower to built-in commands, and those commands are directly callable: `add`, `subtract`, `multiply`, `divide`, `modulo`, `negate`, `equal`, `not-equal`, `less-than`, `less-than-or-equal`, `greater-than`, `greater-than-or-equal`, `and`, `or`, and `not`.
+
+### 5. Variables
 
 Variables are strongly typed and resolved during the compile-time phase.
 
@@ -98,7 +120,7 @@ var $size, length $message; ;
 
 ```
 
-### 5. Deferred Blocks and Returns
+### 6. Deferred Blocks and Returns
 
 Blocks `{ ... }` allow you to group commands without executing them immediately. They are treated as an argument type (`CommandBlockArgument`) and are passed into control flow commands.
 
@@ -116,7 +138,7 @@ If a block needs to resolve to a value, you use the `return` command inside it.
 
 ```
 
-### 6. Functions
+### 7. Functions
 
 Functions in XScripTH are named, reusable deferred blocks.
 
@@ -154,7 +176,7 @@ func "greet_user", {
 @greet_user "Bob", 30;;
 ```
 
-### 7. Control Flow
+### 8. Control Flow
 
 Standard control flow is implemented as built-in commands that accept blocks as inputs.
 

@@ -1,5 +1,6 @@
 using System.Globalization;
 using Pidgin;
+using Pidgin.Expression;
 using XScripTH.Language.Ast;
 using static Pidgin.Parser;
 using static Pidgin.Parser<char>;
@@ -181,6 +182,9 @@ public sealed class XScriptParser
         private static readonly Parser<char, XScriptCommandAst> TopCommand;
         private static readonly Parser<char, XScriptArgumentAst> Argument;
 
+        private static bool CanFollowNestedCommand(char ch) =>
+            ch is ',' or ';' or ')' or '+' or '-' or '*' or '/' or '%' or '<' or '>' or '=' or '!' or '&' or '|';
+
         private static readonly Parser<char, Unit> NestedTerminator =
             CurrentPos.Bind(pos =>
                 Try(String(";;")).Bind(_ =>
@@ -190,7 +194,7 @@ public sealed class XScriptParser
                         Try(
                             Char(';').Before(SkipWs).Bind(_ =>
                                 Lookahead(Any).Optional().Bind(next =>
-                                    (next.HasValue && (next.Value == ',' || next.Value == ';'))
+                                    next.HasValue && CanFollowNestedCommand(next.Value)
                                         ? Return(Unit.Value)
                                         : Parser<char>.Fail<Unit>("Don't consume")
                                 )
@@ -210,7 +214,7 @@ public sealed class XScriptParser
             var nestedCommand = Map(XScriptArgumentAst (name, args, _) =>
                     new XScriptCommandArgumentAst(new XScriptCommandAst(name, args.ToList(),
                         XScriptCommandTerminator.Await)),
-                Identifier,
+                CommandName,
                 argumentsParser,
                 NestedTerminator
             );
@@ -228,7 +232,56 @@ public sealed class XScriptParser
             var varArg = VariableName.Map<XScriptArgumentAst>(v => new XScriptVariableArgumentAst(v));
             var funcRefArg = FunctionRefName.Map<XScriptArgumentAst>(v => new XScriptFunctionReferenceArgumentAst(v));
 
-            Argument = literalArg
+            static Func<XScriptArgumentAst, XScriptArgumentAst> Unary(XScriptExpressionOperator op) =>
+                operand => new XScriptUnaryExpressionAst(op, operand);
+
+            static Func<XScriptArgumentAst, XScriptArgumentAst, XScriptArgumentAst> Binary(XScriptExpressionOperator op) =>
+                (left, right) => new XScriptBinaryExpressionAst(op, left, right);
+
+            var expression = ExpressionParser.Build<char, XScriptArgumentAst>(
+                expr => literalArg
+                    .Or(varArg)
+                    .Or(Try(nestedCommand))
+                    .Or(funcRefArg)
+                    .Or(block)
+                    .Or(expr.Between(Tok('('), Tok(')'))),
+                [
+                    [
+                        Operator.Prefix(Tok("!").ThenReturn(Unary(XScriptExpressionOperator.Not))),
+                        Operator.Prefix(Tok("-").ThenReturn(Unary(XScriptExpressionOperator.Negate))),
+                        Operator.Prefix(Tok("+").ThenReturn<Func<XScriptArgumentAst, XScriptArgumentAst>>(operand => operand))
+                    ],
+                    [
+                        Operator.InfixL(Tok("*").ThenReturn(Binary(XScriptExpressionOperator.Multiply))),
+                        Operator.InfixL(Tok("/").ThenReturn(Binary(XScriptExpressionOperator.Divide))),
+                        Operator.InfixL(Tok("%").ThenReturn(Binary(XScriptExpressionOperator.Modulo)))
+                    ],
+                    [
+                        Operator.InfixL(Tok("+").ThenReturn(Binary(XScriptExpressionOperator.Add))),
+                        Operator.InfixL(Tok("-").ThenReturn(Binary(XScriptExpressionOperator.Subtract)))
+                    ],
+                    [
+                        Operator.InfixL(Try(Tok("<=")).ThenReturn(Binary(XScriptExpressionOperator.LessThanOrEqual))),
+                        Operator.InfixL(Tok("<").ThenReturn(Binary(XScriptExpressionOperator.LessThan))),
+                        Operator.InfixL(Try(Tok(">=")).ThenReturn(Binary(XScriptExpressionOperator.GreaterThanOrEqual))),
+                        Operator.InfixL(Tok(">").ThenReturn(Binary(XScriptExpressionOperator.GreaterThan)))
+                    ],
+                    [
+                        Operator.InfixL(Tok("==").ThenReturn(Binary(XScriptExpressionOperator.Equal))),
+                        Operator.InfixL(Tok("!=").ThenReturn(Binary(XScriptExpressionOperator.NotEqual)))
+                    ],
+                    [
+                        Operator.InfixL(Tok("&&").ThenReturn(Binary(XScriptExpressionOperator.And)))
+                    ],
+                    [
+                        Operator.InfixL(Tok("||").ThenReturn(Binary(XScriptExpressionOperator.Or)))
+                    ]
+                ]);
+
+            var parenthesizedExpression = expression.Between(Tok('('), Tok(')'));
+
+            Argument = parenthesizedExpression
+                .Or(literalArg)
                 .Or(varArg)
                 .Or(funcRefArg)
                 .Or(block)
