@@ -181,7 +181,8 @@ public sealed class XScriptCompiler
                     : throw new XScriptVariableResolutionException(variableArg.Name);
 
             case XScriptBlockArgumentAst blockArg:
-                return await LowerBlockArgumentAsync(blockArg, context.CreateChildScope(), cancellationToken, allowFunctionParameters)
+                return await LowerBlockArgumentAsync(blockArg, context.CreateChildScope(), cancellationToken,
+                        allowFunctionParameters)
                     .ConfigureAwait(false);
 
             case XScriptFunctionReferenceArgumentAst functionArg:
@@ -189,7 +190,8 @@ public sealed class XScriptCompiler
                     throw new XScriptFunctionResolutionException(functionArg.Name);
 
                 if (signature!.Parameters.Count != 0)
-                    throw new InvalidOperationException($"Function '@{functionArg.Name}' requires positional arguments and must be called directly as '@{functionArg.Name} ...;'.");
+                    throw new InvalidOperationException(
+                        $"Function '@{functionArg.Name}' requires positional arguments and must be called directly as '@{functionArg.Name} ...;'.");
 
                 return new CommandFunctionReferenceArgument(functionArg.Name, signature.OutputTypes);
 
@@ -220,11 +222,13 @@ public sealed class XScriptCompiler
                     return new CommandValueArgument(nested.CompileTimeOutput.Values[0]);
                 }
             case XScriptUnaryExpressionAst unaryExpression:
-                return await LowerExpressionAsync(unaryExpression, expectedInputType, context, cancellationToken, allowFunctionParameters)
+                return await LowerExpressionAsync(unaryExpression, expectedInputType, context, cancellationToken,
+                        allowFunctionParameters)
                     .ConfigureAwait(false);
 
             case XScriptBinaryExpressionAst binaryExpression:
-                return await LowerExpressionAsync(binaryExpression, expectedInputType, context, cancellationToken, allowFunctionParameters)
+                return await LowerExpressionAsync(binaryExpression, expectedInputType, context, cancellationToken,
+                        allowFunctionParameters)
                     .ConfigureAwait(false);
 
             default:
@@ -321,7 +325,8 @@ public sealed class XScriptCompiler
                     throw new InvalidOperationException("param declarations are only allowed in a func block.");
 
                 if (executableSeen)
-                    throw new InvalidOperationException("param declarations must appear before executable commands in a function block.");
+                    throw new InvalidOperationException(
+                        "param declarations must appear before executable commands in a function block.");
 
                 if (command.CompileTimeOutput?.Values is { Count: 1 } values &&
                     values[0] is CommandFunctionParameter parameter)

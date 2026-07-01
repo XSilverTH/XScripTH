@@ -9,7 +9,7 @@ namespace XScripTH.Core.Commands.ControlFlow;
 [NoRuntimeInvocation]
 public sealed class ParamCommand : ICommand, ICompileTimePhase
 {
-    private static readonly IReadOnlyDictionary<string, Type> TypeAliases = new Dictionary<string, Type>(StringComparer.Ordinal)
+    private static readonly Dictionary<string, Type> TypeAliases = new(StringComparer.Ordinal)
     {
         ["object"] = typeof(object),
         ["string"] = typeof(string),

@@ -235,7 +235,8 @@ public sealed class XScriptParser
             static Func<XScriptArgumentAst, XScriptArgumentAst> Unary(XScriptExpressionOperator op) =>
                 operand => new XScriptUnaryExpressionAst(op, operand);
 
-            static Func<XScriptArgumentAst, XScriptArgumentAst, XScriptArgumentAst> Binary(XScriptExpressionOperator op) =>
+            static Func<XScriptArgumentAst, XScriptArgumentAst, XScriptArgumentAst>
+                Binary(XScriptExpressionOperator op) =>
                 (left, right) => new XScriptBinaryExpressionAst(op, left, right);
 
             var expression = ExpressionParser.Build<char, XScriptArgumentAst>(
@@ -249,7 +250,8 @@ public sealed class XScriptParser
                     [
                         Operator.Prefix(Tok("!").ThenReturn(Unary(XScriptExpressionOperator.Not))),
                         Operator.Prefix(Tok("-").ThenReturn(Unary(XScriptExpressionOperator.Negate))),
-                        Operator.Prefix(Tok("+").ThenReturn<Func<XScriptArgumentAst, XScriptArgumentAst>>(operand => operand))
+                        Operator.Prefix(Tok("+")
+                            .ThenReturn<Func<XScriptArgumentAst, XScriptArgumentAst>>(operand => operand))
                     ],
                     [
                         Operator.InfixL(Tok("*").ThenReturn(Binary(XScriptExpressionOperator.Multiply))),
@@ -263,7 +265,8 @@ public sealed class XScriptParser
                     [
                         Operator.InfixL(Try(Tok("<=")).ThenReturn(Binary(XScriptExpressionOperator.LessThanOrEqual))),
                         Operator.InfixL(Tok("<").ThenReturn(Binary(XScriptExpressionOperator.LessThan))),
-                        Operator.InfixL(Try(Tok(">=")).ThenReturn(Binary(XScriptExpressionOperator.GreaterThanOrEqual))),
+                        Operator.InfixL(Try(Tok(">="))
+                            .ThenReturn(Binary(XScriptExpressionOperator.GreaterThanOrEqual))),
                         Operator.InfixL(Tok(">").ThenReturn(Binary(XScriptExpressionOperator.GreaterThan)))
                     ],
                     [

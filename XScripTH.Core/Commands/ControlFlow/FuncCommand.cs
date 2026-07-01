@@ -45,7 +45,8 @@ public sealed class FuncCommand : ICommand, ICompileTimePhase
             throw new ArgumentException("func requires a command block as its second input value.", nameof(input));
 
         var context = input.ExecutionContext ?? throw new InvalidOperationException("Execution context is required.");
-        context.SetFunction(name, new CommandFunctionDefinition(block, new CommandFunctionSignature(block.Parameters, block.OutputTypes)));
+        context.SetFunction(name,
+            new CommandFunctionDefinition(block, new CommandFunctionSignature(block.Parameters, block.OutputTypes)));
         return Task.FromResult<ICommandOutput>(CommandOutput.Ok());
     }
 

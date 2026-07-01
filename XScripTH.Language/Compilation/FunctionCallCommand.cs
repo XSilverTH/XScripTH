@@ -27,7 +27,9 @@ internal sealed class FunctionCallCommand : ICommand
         var context = input.ExecutionContext ?? throw new InvalidOperationException("Execution context is required.");
         var values = input.Values;
         if (values?.Count != _signature.Parameters.Count)
-            throw new ArgumentException($"Function '@{Name}' expects {_signature.Parameters.Count} argument(s), but received {values?.Count ?? 0}.", nameof(input));
+            throw new ArgumentException(
+                $"Function '@{Name}' expects {_signature.Parameters.Count} argument(s), but received {values?.Count ?? 0}.",
+                nameof(input));
 
         if (!context.TryGetFunction(Name, out var function) || function is null)
             throw new InvalidOperationException($"Function '@{Name}' has not been assigned.");

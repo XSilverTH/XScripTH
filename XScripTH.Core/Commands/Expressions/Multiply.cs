@@ -11,6 +11,8 @@ public sealed class Multiply : ICommand
     public Task<ICommandOutput> Execute(ICommandInput input)
     {
         var (left, right, type) = ExpressionCommandRuntime.RequireNumericPair(input.Values, "multiply");
-        return Task.FromResult<ICommandOutput>(CommandOutput.Ok([ExpressionCommandRuntime.Multiply(left, right, type)]));
+        return Task.FromResult<ICommandOutput>(CommandOutput.Ok([
+            ExpressionCommandRuntime.Multiply(left, right, type)
+        ]));
     }
 }

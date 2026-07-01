@@ -11,6 +11,8 @@ public sealed class LessThan : ICommand
     public Task<ICommandOutput> Execute(ICommandInput input)
     {
         var (left, right, type) = ExpressionCommandRuntime.RequireNumericPair(input.Values, "less-than");
-        return Task.FromResult<ICommandOutput>(CommandOutput.Ok([ExpressionCommandRuntime.Compare(left, right, type) < 0]));
+        return Task.FromResult<ICommandOutput>(CommandOutput.Ok([
+            ExpressionCommandRuntime.Compare(left, right, type) < 0
+        ]));
     }
 }

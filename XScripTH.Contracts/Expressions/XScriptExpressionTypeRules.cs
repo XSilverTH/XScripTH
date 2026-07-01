@@ -6,16 +6,16 @@ public static class XScriptExpressionTypeRules
     {
         var unwrapped = Nullable.GetUnderlyingType(type) ?? type;
         return unwrapped == typeof(byte)
-            || unwrapped == typeof(sbyte)
-            || unwrapped == typeof(short)
-            || unwrapped == typeof(ushort)
-            || unwrapped == typeof(int)
-            || unwrapped == typeof(uint)
-            || unwrapped == typeof(long)
-            || unwrapped == typeof(ulong)
-            || unwrapped == typeof(float)
-            || unwrapped == typeof(double)
-            || unwrapped == typeof(decimal);
+               || unwrapped == typeof(sbyte)
+               || unwrapped == typeof(short)
+               || unwrapped == typeof(ushort)
+               || unwrapped == typeof(int)
+               || unwrapped == typeof(uint)
+               || unwrapped == typeof(long)
+               || unwrapped == typeof(ulong)
+               || unwrapped == typeof(float)
+               || unwrapped == typeof(double)
+               || unwrapped == typeof(decimal);
     }
 
     public static Type PromoteUnaryNumeric(Type operandType)
@@ -43,7 +43,8 @@ public static class XScriptExpressionTypeRules
 
         if ((left == typeof(decimal) && (right == typeof(float) || right == typeof(double)))
             || (right == typeof(decimal) && (left == typeof(float) || left == typeof(double))))
-            throw new InvalidOperationException("Cannot mix decimal operands with float or double operands in an expression.");
+            throw new InvalidOperationException(
+                "Cannot mix decimal operands with float or double operands in an expression.");
 
         if (left == typeof(decimal) || right == typeof(decimal))
             return typeof(decimal);

@@ -10,6 +10,7 @@ public sealed class Not : ICommand
 {
     public Task<ICommandOutput> Execute(ICommandInput input)
     {
-        return Task.FromResult<ICommandOutput>(CommandOutput.Ok([!ExpressionCommandRuntime.Bool(input.Values, "not", 0)]));
+        return Task.FromResult<ICommandOutput>(
+            CommandOutput.Ok([!ExpressionCommandRuntime.Bool(input.Values, "not", 0)]));
     }
 }

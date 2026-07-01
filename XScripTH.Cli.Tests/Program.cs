@@ -64,7 +64,7 @@ static async Task SyntaxErrorsReturnSyntaxExitCodeAndNoStacktrace()
         var (exitCode, stdout, stderr) = await RunCliAsync(new[] { "run", scriptPath });
         AssertEqual(10, exitCode); // SyntaxError
         AssertContains("Script could not be parsed", stderr);
-        
+
         // Assert no stack trace is printed.
         AssertNotContains("at XScripTH.", stderr);
         AssertNotContains("at System.", stderr);
@@ -179,7 +179,7 @@ static async Task<(int ExitCode, string StdOut, string StdErr)> RunCliAsync(stri
     var cliTarget = GetCliPath();
     var processStartInfo = new ProcessStartInfo();
     processStartInfo.FileName = "dotnet";
-    
+
     if (cliTarget.EndsWith(".dll", StringComparison.OrdinalIgnoreCase))
     {
         var newArgs = new List<string> { cliTarget };
@@ -192,7 +192,7 @@ static async Task<(int ExitCode, string StdOut, string StdErr)> RunCliAsync(stri
         newArgs.AddRange(args);
         processStartInfo.Arguments = string.Join(" ", newArgs.Select(EscapeArgument));
     }
-    
+
     processStartInfo.RedirectStandardOutput = true;
     processStartInfo.RedirectStandardError = true;
     processStartInfo.UseShellExecute = false;
@@ -220,6 +220,7 @@ static string EscapeArgument(string arg)
         var escaped = arg.Replace("\\", "\\\\").Replace("\"", "\\\"");
         return $"\"{escaped}\"";
     }
+
     return arg;
 }
 
@@ -239,7 +240,8 @@ static string GetCliPath()
 
     var repoRoot = dir.FullName;
     var config = "Debug";
-    if (baseDir.Contains($"{Path.DirectorySeparatorChar}Release{Path.DirectorySeparatorChar}", StringComparison.OrdinalIgnoreCase))
+    if (baseDir.Contains($"{Path.DirectorySeparatorChar}Release{Path.DirectorySeparatorChar}",
+            StringComparison.OrdinalIgnoreCase))
     {
         config = "Release";
     }
@@ -271,7 +273,8 @@ static void AssertContains(string expectedSubstring, string actualString)
 {
     if (actualString == null || !actualString.Contains(expectedSubstring))
     {
-        throw new Exception($"AssertContains Failed:\nExpected substring: '{expectedSubstring}'\nActual string:      '{actualString}'");
+        throw new Exception(
+            $"AssertContains Failed:\nExpected substring: '{expectedSubstring}'\nActual string:      '{actualString}'");
     }
 }
 
@@ -279,6 +282,7 @@ static void AssertNotContains(string unexpectedSubstring, string actualString)
 {
     if (actualString != null && actualString.Contains(unexpectedSubstring))
     {
-        throw new Exception($"AssertNotContains Failed:\nUnexpected substring: '{unexpectedSubstring}'\nActual string:        '{actualString}'");
+        throw new Exception(
+            $"AssertNotContains Failed:\nUnexpected substring: '{unexpectedSubstring}'\nActual string:        '{actualString}'");
     }
 }

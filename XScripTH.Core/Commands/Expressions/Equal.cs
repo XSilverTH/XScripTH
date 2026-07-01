@@ -10,6 +10,7 @@ public sealed class Equal : ICommand
 {
     public Task<ICommandOutput> Execute(ICommandInput input)
     {
-        return Task.FromResult<ICommandOutput>(CommandOutput.Ok([ExpressionCommandRuntime.Equal(input.Values, "equal")]));
+        return Task.FromResult<ICommandOutput>(
+            CommandOutput.Ok([ExpressionCommandRuntime.Equal(input.Values, "equal")]));
     }
 }

@@ -6,10 +6,10 @@ namespace XScripTH;
 
 internal sealed class DiagnosticWriter(TextWriter error, bool colorEnabled)
 {
-    private const string Reset = "\u001b[0m";
-    private const string Red = "\u001b[31m";
-    private const string Yellow = "\u001b[33m";
-    private const string Dim = "\u001b[2m";
+    private const string Reset = "\e[0m";
+    private const string Red = "\e[31m";
+    private const string Yellow = "\e[33m";
+    private const string Dim = "\e[2m";
 
     public void WriteError(string title, string message)
     {
@@ -32,11 +32,9 @@ internal sealed class DiagnosticWriter(TextWriter error, bool colorEnabled)
         {
             var path = typeError.Path.Count == 0 ? "<root>" : string.Join(" -> ", typeError.Path);
             error.WriteLine($"  at {path}: {typeError.Message}");
-            if (typeError.ExpectedType is not null || typeError.ActualType is not null)
-            {
-                error.WriteLine($"     expected: {FormatType(typeError.ExpectedType)}");
-                error.WriteLine($"       actual: {FormatType(typeError.ActualType)}");
-            }
+            if (typeError.ExpectedType is null && typeError.ActualType is null) continue;
+            error.WriteLine($"     expected: {FormatType(typeError.ExpectedType)}");
+            error.WriteLine($"       actual: {FormatType(typeError.ActualType)}");
         }
     }
 

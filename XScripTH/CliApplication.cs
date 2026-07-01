@@ -29,8 +29,10 @@ internal sealed class CliApplication(TextReader input, TextWriter output, TextWr
                 CliMode.Help => WriteUsage(output),
                 CliMode.Version => WriteVersion(output),
                 CliMode.Run => await runtime.RunFileAsync(command.ScriptPath!, cancellationToken).ConfigureAwait(false),
-                CliMode.Check => await runtime.CheckFileAsync(command.ScriptPath!, cancellationToken).ConfigureAwait(false),
-                CliMode.Repl => await new ReplSession(runtime, input, output).RunAsync(cancellationToken).ConfigureAwait(false),
+                CliMode.Check => await runtime.CheckFileAsync(command.ScriptPath!, cancellationToken)
+                    .ConfigureAwait(false),
+                CliMode.Repl => await new ReplSession(runtime, input, output).RunAsync(cancellationToken)
+                    .ConfigureAwait(false),
                 _ => CliExitCode.UsageError
             };
 
@@ -83,6 +85,7 @@ internal sealed class CliApplication(TextReader input, TextWriter output, TextWr
 
     private static bool ColorEnabled(bool noColor)
     {
-        return !noColor && !Console.IsErrorRedirected && string.IsNullOrEmpty(Environment.GetEnvironmentVariable("NO_COLOR"));
+        return !noColor && !Console.IsErrorRedirected &&
+               string.IsNullOrEmpty(Environment.GetEnvironmentVariable("NO_COLOR"));
     }
 }

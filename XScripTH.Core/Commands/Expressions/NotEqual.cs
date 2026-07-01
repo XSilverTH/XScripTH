@@ -10,6 +10,8 @@ public sealed class NotEqual : ICommand
 {
     public Task<ICommandOutput> Execute(ICommandInput input)
     {
-        return Task.FromResult<ICommandOutput>(CommandOutput.Ok([!ExpressionCommandRuntime.Equal(input.Values, "not-equal")]));
+        return Task.FromResult<ICommandOutput>(CommandOutput.Ok([
+            !ExpressionCommandRuntime.Equal(input.Values, "not-equal")
+        ]));
     }
 }

@@ -34,7 +34,7 @@ internal sealed class CliRuntime(DiagnosticWriter diagnostics, TextWriter output
         if (result != CliExitCode.Success)
             return result;
 
-        output.WriteLine($"OK {path}");
+        await output.WriteLineAsync($"OK {path}");
         return CliExitCode.Success;
     }
 
@@ -96,7 +96,8 @@ internal sealed class CliRuntime(DiagnosticWriter diagnostics, TextWriter output
         IReadOnlyList<ICommandInvocation> invocations;
         try
         {
-            invocations = await compiler.CompileAsync(source, compilationContext, cancellationToken).ConfigureAwait(false);
+            invocations = await compiler.CompileAsync(source, compilationContext, cancellationToken)
+                .ConfigureAwait(false);
         }
         catch (Exception exception) when (TryRenderCompileException(exception, source, path, out var code))
         {
@@ -116,13 +117,9 @@ internal sealed class CliRuntime(DiagnosticWriter diagnostics, TextWriter output
         {
             var outputs = await engine.ExecuteAllAsync(invocations, executionContext, cancellationToken)
                 .ConfigureAwait(false);
-            if (outputs.Any(output => output.Status == CommandStatus.Error))
-            {
-                diagnostics.WriteRuntimeStatusError();
-                return CliExitCode.RuntimeError;
-            }
-
-            return CliExitCode.Success;
+            if (outputs.All(commandOutput => commandOutput.Status != CommandStatus.Error)) return CliExitCode.Success;
+            diagnostics.WriteRuntimeStatusError();
+            return CliExitCode.RuntimeError;
         }
         catch (OperationCanceledException)
         {
@@ -146,7 +143,8 @@ internal sealed class CliRuntime(DiagnosticWriter diagnostics, TextWriter output
             source = File.ReadAllText(path);
             return true;
         }
-        catch (Exception exception) when (exception is IOException or UnauthorizedAccessException or ArgumentException or NotSupportedException)
+        catch (Exception exception) when (exception is IOException or UnauthorizedAccessException or ArgumentException
+                                              or NotSupportedException)
         {
             diagnostics.WriteError("Input file could not be read", exception.Message);
             exitCode = CliExitCode.InputError;
@@ -166,7 +164,8 @@ internal sealed class CliRuntime(DiagnosticWriter diagnostics, TextWriter output
                 diagnostics.WriteTypeError(typeException);
                 code = CliExitCode.TypeError;
                 return true;
-            case XScriptCommandResolutionException or XScriptVariableResolutionException or XScriptFunctionResolutionException:
+            case XScriptCommandResolutionException or XScriptVariableResolutionException
+                or XScriptFunctionResolutionException:
                 diagnostics.WriteSymbolError(exception);
                 code = CliExitCode.SymbolError;
                 return true;

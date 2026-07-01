@@ -554,7 +554,9 @@ static async Task FunctionParametersResolveInsideFunctionBody()
     CommandCounts.Reset();
     var engine = new XScripTHEngine();
     var compiler = CreateControlFlowCompiler(engine);
-    var invocations = await compiler.CompileAsync("func \"name_length\", { param $name, \"string\"; length $name; }; @name_length \"Alice\";");
+    var invocations =
+        await compiler.CompileAsync(
+            "func \"name_length\", { param $name, \"string\"; length $name; }; @name_length \"Alice\";");
 
     var outputs = await engine.ExecuteAllAsync(invocations);
 
@@ -572,7 +574,8 @@ static async Task FunctionCallArgumentTypeMismatchFailsCompile()
 
     var exception = await AssertThrowsAsync<CommandTypeCheckException>(async () =>
     {
-        await compiler.CompileAsync("func \"name_length\", { param $name, \"string\"; length $name; }; @name_length 25;");
+        await compiler.CompileAsync(
+            "func \"name_length\", { param $name, \"string\"; length $name; }; @name_length 25;");
     });
 
     AssertEqual(1, exception.Errors.Count);
@@ -589,7 +592,8 @@ static async Task FunctionCallMissingArgumentFailsCompile()
 
     var exception = await AssertThrowsAsync<CommandTypeCheckException>(async () =>
     {
-        await compiler.CompileAsync("func \"name_length\", { param $name, \"string\"; length $name; }; @name_length;");
+        await compiler.CompileAsync(
+            "func \"name_length\", { param $name, \"string\"; length $name; }; @name_length;");
     });
 
     AssertEqual(1, exception.Errors.Count);
@@ -615,7 +619,8 @@ static async Task ParamOutsideFuncBlockFailsCompile()
 
     if (!exception.Message.Contains("only allowed in a func block", StringComparison.OrdinalIgnoreCase))
     {
-        throw new InvalidOperationException($"Expected message containing 'only allowed in a func block', but got: '{exception.Message}'");
+        throw new InvalidOperationException(
+            $"Expected message containing 'only allowed in a func block', but got: '{exception.Message}'");
     }
 }
 
@@ -631,7 +636,8 @@ static async Task LateParamInFuncBlockFailsCompile()
 
     if (!exception.Message.Contains("before executable commands", StringComparison.OrdinalIgnoreCase))
     {
-        throw new InvalidOperationException($"Expected message containing 'before executable commands', but got: '{exception.Message}'");
+        throw new InvalidOperationException(
+            $"Expected message containing 'before executable commands', but got: '{exception.Message}'");
     }
 }
 
@@ -642,12 +648,14 @@ static async Task ParameterizedFunctionReferenceFailsCompile()
 
     var exception = await AssertThrowsAsync<InvalidOperationException>(async () =>
     {
-        await compiler.CompileAsync("func \"needs_name\", { param $name, \"string\"; length $name; }; length @needs_name;");
+        await compiler.CompileAsync(
+            "func \"needs_name\", { param $name, \"string\"; length $name; }; length @needs_name;");
     });
 
     if (!exception.Message.Contains("must be called directly", StringComparison.OrdinalIgnoreCase))
     {
-        throw new InvalidOperationException($"Expected message containing 'must be called directly', but got: '{exception.Message}'");
+        throw new InvalidOperationException(
+            $"Expected message containing 'must be called directly', but got: '{exception.Message}'");
     }
 }
 
@@ -717,7 +725,8 @@ static async Task ExpressionsAcceptNestedCommandsFunctionsAndBlocks()
     CommandCounts.Reset();
     var engine = new XScripTHEngine();
     var compiler = CreateControlFlowCompiler(engine);
-    var invocations = await compiler.CompileAsync("func \"two\", { return 2; }; consume-int (@two; + number; + { return 1; });");
+    var invocations =
+        await compiler.CompileAsync("func \"two\", { return 2; }; consume-int (@two; + number; + { return 1; });");
 
     await engine.ExecuteAllAsync(invocations);
 
@@ -754,10 +763,7 @@ static async Task UnparenthesizedInfixSyntaxIsRejected()
     var engine = new XScripTHEngine();
     var compiler = CreateControlFlowCompiler(engine);
 
-    await AssertThrowsAsync<XScriptParseException>(async () =>
-    {
-        await compiler.CompileAsync("consume-int 1 + 2;");
-    });
+    await AssertThrowsAsync<XScriptParseException>(async () => { await compiler.CompileAsync("consume-int 1 + 2;"); });
 }
 
 static async Task ExpressionNumericTypeMismatchFailsCompile()
@@ -772,7 +778,8 @@ static async Task ExpressionNumericTypeMismatchFailsCompile()
 
     if (!exception.Message.Contains("Cannot mix decimal operands", StringComparison.OrdinalIgnoreCase))
     {
-        throw new InvalidOperationException($"Expected message containing 'Cannot mix decimal operands', but got: '{exception.Message}'");
+        throw new InvalidOperationException(
+            $"Expected message containing 'Cannot mix decimal operands', but got: '{exception.Message}'");
     }
 }
 

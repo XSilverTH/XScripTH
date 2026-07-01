@@ -11,6 +11,8 @@ public sealed class Subtract : ICommand
     public Task<ICommandOutput> Execute(ICommandInput input)
     {
         var (left, right, type) = ExpressionCommandRuntime.RequireNumericPair(input.Values, "subtract");
-        return Task.FromResult<ICommandOutput>(CommandOutput.Ok([ExpressionCommandRuntime.Subtract(left, right, type)]));
+        return Task.FromResult<ICommandOutput>(CommandOutput.Ok([
+            ExpressionCommandRuntime.Subtract(left, right, type)
+        ]));
     }
 }

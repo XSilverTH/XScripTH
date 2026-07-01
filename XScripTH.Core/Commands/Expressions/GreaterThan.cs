@@ -11,6 +11,8 @@ public sealed class GreaterThan : ICommand
     public Task<ICommandOutput> Execute(ICommandInput input)
     {
         var (left, right, type) = ExpressionCommandRuntime.RequireNumericPair(input.Values, "greater-than");
-        return Task.FromResult<ICommandOutput>(CommandOutput.Ok([ExpressionCommandRuntime.Compare(left, right, type) > 0]));
+        return Task.FromResult<ICommandOutput>(CommandOutput.Ok([
+            ExpressionCommandRuntime.Compare(left, right, type) > 0
+        ]));
     }
 }

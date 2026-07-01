@@ -10,6 +10,9 @@ public sealed class And : ICommand
 {
     public Task<ICommandOutput> Execute(ICommandInput input)
     {
-        return Task.FromResult<ICommandOutput>(CommandOutput.Ok([ExpressionCommandRuntime.Bool(input.Values, "and", 0) && ExpressionCommandRuntime.Bool(input.Values, "and", 1)]));
+        return Task.FromResult<ICommandOutput>(CommandOutput.Ok([
+            ExpressionCommandRuntime.Bool(input.Values, "and", 0) &&
+            ExpressionCommandRuntime.Bool(input.Values, "and", 1)
+        ]));
     }
 }

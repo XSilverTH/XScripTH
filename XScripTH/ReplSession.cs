@@ -13,7 +13,8 @@ internal sealed class ReplSession(CliRuntime runtime, TextReader input, TextWrit
         var compilationContext = new CompilationContext();
         var executionContext = new XScriptExecutionContext(engine);
 
-        output.WriteLine("XScripTH REPL. Enter script statements, :check <script>, :reset, :help, or :exit.");
+        await output.WriteLineAsync(
+            "XScripTH REPL. Enter script statements, :check <script>, :reset, :help, or :exit.");
 
         while (!cancellationToken.IsCancellationRequested)
         {
@@ -25,32 +26,30 @@ internal sealed class ReplSession(CliRuntime runtime, TextReader input, TextWrit
             if (trimmed.Length == 0)
                 continue;
 
-            if (trimmed is ":exit" or ":quit")
-                return CliExitCode.Success;
-
-            if (trimmed == ":help")
+            switch (trimmed)
             {
-                WriteHelp();
-                continue;
-            }
-
-            if (trimmed == ":reset")
-            {
-                compiler = CliRuntime.CreateCompiler();
-                engine = new XScripTHEngine();
-                compilationContext = new CompilationContext();
-                executionContext = new XScriptExecutionContext(engine);
-                output.WriteLine("State reset.");
-                continue;
+                case ":exit" or ":quit":
+                    return CliExitCode.Success;
+                case ":help":
+                    WriteHelp();
+                    continue;
+                case ":reset":
+                    compiler = CliRuntime.CreateCompiler();
+                    engine = new XScripTHEngine();
+                    compilationContext = new CompilationContext();
+                    executionContext = new XScriptExecutionContext(engine);
+                    await output.WriteLineAsync("State reset.");
+                    continue;
             }
 
             if (trimmed.StartsWith(":check ", StringComparison.Ordinal))
             {
                 var source = trimmed[7..].TrimStart();
-                var checkCode = await runtime.CompileOnlyAsync(compiler, source, new CompilationContext(), "<repl>", cancellationToken)
+                var checkCode = await runtime
+                    .CompileOnlyAsync(compiler, source, new CompilationContext(), "<repl>", cancellationToken)
                     .ConfigureAwait(false);
                 if (checkCode == CliExitCode.Success)
-                    output.WriteLine("OK");
+                    await output.WriteLineAsync("OK");
                 continue;
             }
 
@@ -121,16 +120,14 @@ internal sealed class ReplSession(CliRuntime runtime, TextReader input, TextWrit
                 continue;
             }
 
-            if (ch == '\\' && inString)
+            switch (ch)
             {
-                escaped = true;
-                continue;
-            }
-
-            if (ch == '"')
-            {
-                inString = !inString;
-                continue;
+                case '\\' when inString:
+                    escaped = true;
+                    continue;
+                case '"':
+                    inString = !inString;
+                    continue;
             }
 
             if (inString)

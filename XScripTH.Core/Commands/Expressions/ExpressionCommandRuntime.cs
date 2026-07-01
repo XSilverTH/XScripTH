@@ -5,10 +5,12 @@ namespace XScripTH.Core.Commands.Expressions;
 
 internal static class ExpressionCommandRuntime
 {
-    public static IReadOnlyList<object?> RequireInputCount(IReadOnlyList<object?>? input, string commandName, int expectedCount)
+    public static IReadOnlyList<object?> RequireInputCount(IReadOnlyList<object?>? input, string commandName,
+        int expectedCount)
     {
         if (input is null || input.Count != expectedCount)
-            throw new ArgumentException($"{commandName} requires exactly {expectedCount} input value(s).", nameof(input));
+            throw new ArgumentException($"{commandName} requires exactly {expectedCount} input value(s).",
+                nameof(input));
 
         return input;
     }
@@ -21,8 +23,8 @@ internal static class ExpressionCommandRuntime
         var left = values[0];
         var right = values[1];
         if (left is null || right is null
-            || !XScriptExpressionTypeRules.IsNumeric(left.GetType())
-            || !XScriptExpressionTypeRules.IsNumeric(right.GetType()))
+                         || !XScriptExpressionTypeRules.IsNumeric(left.GetType())
+                         || !XScriptExpressionTypeRules.IsNumeric(right.GetType()))
             throw new ArgumentException($"{commandName} requires numeric input values.", nameof(input));
 
         var promotedType = XScriptExpressionTypeRules.PromoteNumeric(left.GetType(), right.GetType());
@@ -91,16 +93,13 @@ internal static class ExpressionCommandRuntime
         if (IsZero(right, type))
             throw new DivideByZeroException("Expression division by zero.");
 
-        checked
-        {
-            if (type == typeof(decimal)) return (decimal)left / (decimal)right;
-            if (type == typeof(double)) return (double)left / (double)right;
-            if (type == typeof(float)) return (float)left / (float)right;
-            if (type == typeof(ulong)) return (ulong)left / (ulong)right;
-            if (type == typeof(long)) return (long)left / (long)right;
-            if (type == typeof(uint)) return (uint)left / (uint)right;
-            return (int)left / (int)right;
-        }
+        if (type == typeof(decimal)) return (decimal)left / (decimal)right;
+        if (type == typeof(double)) return (double)left / (double)right;
+        if (type == typeof(float)) return (float)left / (float)right;
+        if (type == typeof(ulong)) return (ulong)left / (ulong)right;
+        if (type == typeof(long)) return (long)left / (long)right;
+        if (type == typeof(uint)) return (uint)left / (uint)right;
+        return (int)left / (int)right;
     }
 
     public static object Modulo(object left, object right, Type type)
@@ -108,16 +107,13 @@ internal static class ExpressionCommandRuntime
         if (IsZero(right, type))
             throw new DivideByZeroException("Expression division by zero.");
 
-        checked
-        {
-            if (type == typeof(decimal)) return (decimal)left % (decimal)right;
-            if (type == typeof(double)) return (double)left % (double)right;
-            if (type == typeof(float)) return (float)left % (float)right;
-            if (type == typeof(ulong)) return (ulong)left % (ulong)right;
-            if (type == typeof(long)) return (long)left % (long)right;
-            if (type == typeof(uint)) return (uint)left % (uint)right;
-            return (int)left % (int)right;
-        }
+        if (type == typeof(decimal)) return (decimal)left % (decimal)right;
+        if (type == typeof(double)) return (double)left % (double)right;
+        if (type == typeof(float)) return (float)left % (float)right;
+        if (type == typeof(ulong)) return (ulong)left % (ulong)right;
+        if (type == typeof(long)) return (long)left % (long)right;
+        if (type == typeof(uint)) return (uint)left % (uint)right;
+        return (int)left % (int)right;
     }
 
     public static object Negate(object operand, Type type)
@@ -139,17 +135,14 @@ internal static class ExpressionCommandRuntime
         var values = RequireInputCount(input, commandName, 2);
         var left = values[0];
         var right = values[1];
-        if (left is not null && right is not null
-            && XScriptExpressionTypeRules.IsNumeric(left.GetType())
-            && XScriptExpressionTypeRules.IsNumeric(right.GetType()))
-        {
-            var promotedType = XScriptExpressionTypeRules.PromoteNumeric(left.GetType(), right.GetType());
-            var convertedLeft = Convert.ChangeType(left, promotedType, CultureInfo.InvariantCulture);
-            var convertedRight = Convert.ChangeType(right, promotedType, CultureInfo.InvariantCulture);
-            return Equals(convertedLeft, convertedRight);
-        }
-
-        return Equals(left, right);
+        if (left is null || right is null
+                         || !XScriptExpressionTypeRules.IsNumeric(left.GetType())
+                         || !XScriptExpressionTypeRules.IsNumeric(right.GetType()))
+            return Equals(left, right);
+        var promotedType = XScriptExpressionTypeRules.PromoteNumeric(left.GetType(), right.GetType());
+        var convertedLeft = Convert.ChangeType(left, promotedType, CultureInfo.InvariantCulture);
+        var convertedRight = Convert.ChangeType(right, promotedType, CultureInfo.InvariantCulture);
+        return Equals(convertedLeft, convertedRight);
     }
 
     public static bool Bool(IReadOnlyList<object?>? input, string commandName, int index)
