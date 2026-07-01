@@ -72,6 +72,9 @@ public sealed class XScriptCompiler
         ICompilationContext context,
         CancellationToken cancellationToken)
     {
+        if (commandAst.Name[0] == '@')
+            return await BindFunctionCallAsync(commandAst, context, cancellationToken).ConfigureAwait(false);
+
         if (!_commandRegistry.TryCreate(commandAst.Name, out var command) || command == null)
             throw new XScriptCommandResolutionException(commandAst.Name);
 
@@ -85,7 +88,8 @@ public sealed class XScriptCompiler
                 commandAst.Arguments[index],
                 inputs is not null && index < inputs.Length ? inputs[index] : null,
                 context,
-                cancellationToken).ConfigureAwait(false));
+                cancellationToken,
+                allowFunctionParameters: commandAst.Name == "func" && index == 1).ConfigureAwait(false));
 
         var staticOutputTypes = commandAst.Name == "return"
             ? commandAst.Arguments.Count > 0 ? GetArgumentOutputTypes(arguments[0]) : []
@@ -102,7 +106,7 @@ public sealed class XScriptCompiler
 
         if (!emitsRuntimeInvocation)
             foreach (var argument in invocation.Arguments)
-                if (argument is not CommandValueArgument)
+                if (argument is not CommandValueArgument && argument is not CommandVariableArgument)
                     throw new InvalidOperationException(
                         $"Compile-time command '{commandAst.Name}' cannot use dynamic argument '{argument.GetType().FullName}'.");
 
@@ -118,11 +122,39 @@ public sealed class XScriptCompiler
             : new BoundCommand(null, output, commandAst.Terminator, commandAst.Name, outputTypes);
     }
 
+    private async Task<BoundCommand> BindFunctionCallAsync(
+        XScriptCommandAst commandAst,
+        ICompilationContext context,
+        CancellationToken cancellationToken)
+    {
+        var functionName = commandAst.Name[1..];
+        if (!context.Symbols.TryGetFunctionSignature(commandAst.Name, out var signature) || signature is null)
+            throw new XScriptFunctionResolutionException(functionName);
+
+        var arguments = new List<ICommandArgument>(commandAst.Arguments.Count);
+        for (var index = 0; index < commandAst.Arguments.Count; index++)
+            arguments.Add(await LowerArgumentAsync(
+                commandAst.Arguments[index],
+                index < signature.Parameters.Count ? signature.Parameters[index].Type : null,
+                context,
+                cancellationToken,
+                allowFunctionParameters: false).ConfigureAwait(false));
+
+        var invocation = new CommandInvocation(
+            new FunctionCallCommand(functionName, signature),
+            arguments,
+            staticOutputTypes: signature.OutputTypes,
+            staticInputTypes: signature.Parameters.Select(parameter => parameter.Type).ToArray());
+
+        return new BoundCommand(invocation, null, commandAst.Terminator, commandAst.Name, signature.OutputTypes);
+    }
+
     private async Task<ICommandArgument> LowerArgumentAsync(
         XScriptArgumentAst argumentAst,
         Type? expectedInputType,
         ICompilationContext context,
-        CancellationToken cancellationToken)
+        CancellationToken cancellationToken,
+        bool allowFunctionParameters)
     {
         switch (argumentAst)
         {
@@ -138,14 +170,17 @@ public sealed class XScriptCompiler
                     : throw new XScriptVariableResolutionException(variableArg.Name);
 
             case XScriptBlockArgumentAst blockArg:
-                return await LowerBlockArgumentAsync(blockArg, context.CreateChildScope(), cancellationToken)
+                return await LowerBlockArgumentAsync(blockArg, context.CreateChildScope(), cancellationToken, allowFunctionParameters)
                     .ConfigureAwait(false);
 
             case XScriptFunctionReferenceArgumentAst functionArg:
                 if (!context.Symbols.TryGetFunctionSignature(functionArg.Name, out var signature))
                     throw new XScriptFunctionResolutionException(functionArg.Name);
 
-                return new CommandFunctionReferenceArgument(functionArg.Name, signature!.OutputTypes);
+                if (signature!.Parameters.Count != 0)
+                    throw new InvalidOperationException($"Function '@{functionArg.Name}' requires positional arguments and must be called directly as '@{functionArg.Name} ...;'.");
+
+                return new CommandFunctionReferenceArgument(functionArg.Name, signature.OutputTypes);
 
             case XScriptCommandArgumentAst commandArg:
                 if (expectedInputType is not null && IsBlockContainerExpected(expectedInputType))
@@ -182,13 +217,47 @@ public sealed class XScriptCompiler
     private async Task<CommandBlockArgument> LowerBlockArgumentAsync(
         XScriptBlockArgumentAst blockAst,
         ICompilationContext context,
-        CancellationToken cancellationToken)
+        CancellationToken cancellationToken,
+        bool allowFunctionParameters)
     {
         var boundProgram = await BindProgramAsync(blockAst.Commands, context, cancellationToken).ConfigureAwait(false);
+        var parameters = CollectFunctionParameters(boundProgram, allowFunctionParameters);
         var invocations = EmitProgram(boundProgram);
 
         var outputTypes = boundProgram.Commands.Count == 0 ? [] : boundProgram.Commands[^1].OutputTypes;
-        return new CommandBlockArgument(invocations, outputTypes);
+        return new CommandBlockArgument(invocations, outputTypes, parameters);
+    }
+
+    private static IReadOnlyList<CommandFunctionParameter> CollectFunctionParameters(
+        BoundProgram boundProgram,
+        bool allowFunctionParameters)
+    {
+        var parameters = new List<CommandFunctionParameter>();
+        var executableSeen = false;
+
+        foreach (var command in boundProgram.Commands)
+        {
+            if (command.Name == "param")
+            {
+                if (!allowFunctionParameters)
+                    throw new InvalidOperationException("param declarations are only allowed in a func block.");
+
+                if (executableSeen)
+                    throw new InvalidOperationException("param declarations must appear before executable commands in a function block.");
+
+                if (command.CompileTimeOutput?.Values is { Count: 1 } values &&
+                    values[0] is CommandFunctionParameter parameter)
+                {
+                    parameters.Add(parameter);
+                }
+
+                continue;
+            }
+
+            executableSeen = true;
+        }
+
+        return parameters;
     }
 
     private async Task TypeCheckAsync(BoundProgram bound, CancellationToken cancellationToken)

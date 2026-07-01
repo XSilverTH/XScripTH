@@ -94,7 +94,7 @@ public sealed class CommandTypeChecker : ICommandTypeChecker
         var command = invocation.Command
                       ?? throw new InvalidOperationException("Command invocation returned null command.");
         var commandTypes = command.GetType().GetCustomAttribute<CommandTypesAttribute>();
-        var inputs = commandTypes?.Inputs;
+        var inputs = invocation.StaticInputTypes ?? commandTypes?.Inputs;
         var outputs = GetInvocationOutputTypes(invocation, command);
         var errors = new List<CommandTypeCheckError>();
 

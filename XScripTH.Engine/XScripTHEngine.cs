@@ -75,7 +75,7 @@ public sealed class XScripTHEngine : ICommandExecutor
         var command = invocation.Command
                       ?? throw new InvalidOperationException("Command invocation returned null command.");
         var commandTypes = command.GetType().GetCustomAttribute<CommandTypesAttribute>();
-        var inputs = commandTypes?.Inputs;
+        var inputs = invocation.StaticInputTypes ?? commandTypes?.Inputs;
         var values = new List<object?>();
 
         for (var index = 0; index < invocation.Arguments.Count; index++)
