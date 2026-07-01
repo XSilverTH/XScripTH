@@ -1,11 +1,12 @@
 using XScripTH.Contracts.Interfaces;
+using XScripTH.Contracts.Models;
 
 namespace XScripTH.Language.Compilation;
 
 public sealed class CompileTimeSymbolTable(ICompileTimeSymbolTable? parent = null) : ICompileTimeSymbolTable
 {
     private readonly Dictionary<string, Type> _variables = new(StringComparer.Ordinal);
-    private readonly Dictionary<string, Type[]> _functions = new(StringComparer.Ordinal);
+    private readonly Dictionary<string, CommandFunctionSignature> _functions = new(StringComparer.Ordinal);
 
     public void DeclareVariable(string name, Type type)
     {
@@ -41,37 +42,37 @@ public sealed class CompileTimeSymbolTable(ICompileTimeSymbolTable? parent = nul
         return false;
     }
 
-    public void DeclareFunction(string name, Type[] outputTypes)
+    public void DeclareFunction(string name, CommandFunctionSignature signature)
     {
         var normalizedName = NormalizeFunctionName(name);
-        ArgumentNullException.ThrowIfNull(outputTypes);
+        ArgumentNullException.ThrowIfNull(signature);
 
-        if (!_functions.TryGetValue(normalizedName, out var existingOutputTypes))
+        if (!_functions.TryGetValue(normalizedName, out var existingSignature))
         {
-            _functions.Add(normalizedName, outputTypes);
+            _functions.Add(normalizedName, signature);
             return;
         }
 
-        if (existingOutputTypes.SequenceEqual(outputTypes))
+        if (SignaturesEqual(existingSignature, signature))
             return;
 
         throw new InvalidOperationException(
-            $"Function '@{normalizedName}' is already declared with outputs '{FormatTypes(existingOutputTypes)}' and cannot be redeclared with outputs '{FormatTypes(outputTypes)}'.");
+            $"Function '@{normalizedName}' is already declared with inputs '{FormatParameters(existingSignature.Parameters)}' and outputs '{FormatTypes(existingSignature.OutputTypes)}' and cannot be redeclared with inputs '{FormatParameters(signature.Parameters)}' and outputs '{FormatTypes(signature.OutputTypes)}'.");
     }
 
-    public bool TryGetFunctionOutputTypes(string name, out Type[]? outputTypes)
+    public bool TryGetFunctionSignature(string name, out CommandFunctionSignature? signature)
     {
         var normalizedName = NormalizeFunctionName(name);
-        if (_functions.TryGetValue(normalizedName, out var storedOutputTypes))
+        if (_functions.TryGetValue(normalizedName, out var storedSignature))
         {
-            outputTypes = storedOutputTypes;
+            signature = storedSignature;
             return true;
         }
 
         if (parent is not null)
-            return parent.TryGetFunctionOutputTypes(name, out outputTypes);
+            return parent.TryGetFunctionSignature(name, out signature);
 
-        outputTypes = null;
+        signature = null;
         return false;
     }
 
@@ -95,6 +96,14 @@ public sealed class CompileTimeSymbolTable(ICompileTimeSymbolTable? parent = nul
 
         return name[0] == '@' ? name[1..] : name;
     }
+
+    private static bool SignaturesEqual(CommandFunctionSignature left, CommandFunctionSignature right) =>
+        left.Parameters.Select(parameter => (parameter.Name, parameter.Type))
+            .SequenceEqual(right.Parameters.Select(parameter => (parameter.Name, parameter.Type))) &&
+        left.OutputTypes.SequenceEqual(right.OutputTypes);
+
+    private static string FormatParameters(IReadOnlyList<CommandFunctionParameter> parameters) =>
+        string.Join(", ", parameters.Select(parameter => $"${parameter.Name}: {parameter.Type.FullName}"));
 
     private static string FormatTypes(Type[] types) =>
         string.Join(", ", types.Select(type => type.FullName));

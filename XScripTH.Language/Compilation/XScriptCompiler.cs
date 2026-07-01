@@ -142,9 +142,10 @@ public sealed class XScriptCompiler
                     .ConfigureAwait(false);
 
             case XScriptFunctionReferenceArgumentAst functionArg:
-                return context.Symbols.TryGetFunctionOutputTypes(functionArg.Name, out var outputTypes)
-                    ? new CommandFunctionReferenceArgument(functionArg.Name, outputTypes!)
-                    : throw new XScriptFunctionResolutionException(functionArg.Name);
+                if (!context.Symbols.TryGetFunctionSignature(functionArg.Name, out var signature))
+                    throw new XScriptFunctionResolutionException(functionArg.Name);
+
+                return new CommandFunctionReferenceArgument(functionArg.Name, signature!.OutputTypes);
 
             case XScriptCommandArgumentAst commandArg:
                 if (expectedInputType is not null && IsBlockContainerExpected(expectedInputType))

@@ -27,7 +27,7 @@ public sealed class FuncCommand : ICommand, ICompileTimePhase
         if (arguments[1] is not CommandBlockArgument block)
             throw new ArgumentException("func requires a command block as its second argument.", nameof(arguments));
 
-        context.Symbols.DeclareFunction(name, block.OutputTypes);
+        context.Symbols.DeclareFunction(name, new CommandFunctionSignature(block.Parameters, block.OutputTypes));
         return Task.FromResult<ICommandOutput>(CommandOutput.Ok());
     }
 
@@ -45,7 +45,7 @@ public sealed class FuncCommand : ICommand, ICompileTimePhase
             throw new ArgumentException("func requires a command block as its second input value.", nameof(input));
 
         var context = input.ExecutionContext ?? throw new InvalidOperationException("Execution context is required.");
-        context.SetFunction(name, block);
+        context.SetFunction(name, new CommandFunctionDefinition(block, new CommandFunctionSignature(block.Parameters, block.OutputTypes)));
         return Task.FromResult<ICommandOutput>(CommandOutput.Ok());
     }
 

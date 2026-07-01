@@ -158,7 +158,8 @@ static async Task FunctionReferenceToPrimitiveExecutesStoredBlock()
     var literal = new LiteralStringCommand("hello");
     var engine = new XScripTHEngine();
     var context = new XScriptExecutionContext(engine);
-    context.SetFunction("say", new CommandBlockArgument(Program(Invoke(literal)), [typeof(string)]));
+    var block = new CommandBlockArgument(Program(Invoke(literal)), [typeof(string)]);
+    context.SetFunction("say", new CommandFunctionDefinition(block, new CommandFunctionSignature([], block.OutputTypes)));
     var invocation = Invoke(new StringLengthCommand(), new CommandFunctionReferenceArgument("say", [typeof(string)]));
 
     var result = await engine.ExecuteAsync(Program(invocation), context);

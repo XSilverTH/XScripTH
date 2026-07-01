@@ -6,5 +6,7 @@ public interface ICommandInvocation
 
     IReadOnlyList<ICommandArgument> Arguments { get; }
 
+    Type[]? StaticInputTypes => null;
+
     Type[]? StaticOutputTypes => null;
 }

@@ -5,17 +5,23 @@ namespace XScripTH.Contracts.Models;
 
 public sealed class CommandBlockArgument : ICommandArgument
 {
-    public CommandBlockArgument(IReadOnlyList<ICommandInvocation> invocations, Type[]? outputTypes = null)
+    public CommandBlockArgument(
+        IReadOnlyList<ICommandInvocation> invocations,
+        Type[]? outputTypes = null,
+        IReadOnlyList<CommandFunctionParameter>? parameters = null)
     {
         ArgumentNullException.ThrowIfNull(invocations);
 
         Invocations = invocations;
         OutputTypes = outputTypes ?? Array.Empty<Type>();
+        Parameters = parameters ?? Array.Empty<CommandFunctionParameter>();
     }
 
     public IReadOnlyList<ICommandInvocation> Invocations { get; }
 
     public Type[] OutputTypes { get; }
+
+    public IReadOnlyList<CommandFunctionParameter> Parameters { get; }
 
     public async Task<ArgumentEvaluationResult> EvaluateAsync(
         ICommandExecutor executor,

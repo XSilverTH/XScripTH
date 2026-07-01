@@ -27,10 +27,10 @@ public sealed class CommandFunctionReferenceArgument : ICommandArgument
         Type? expectedInputType,
         CancellationToken cancellationToken)
     {
-        if (!executionContext.TryGetFunction(Name, out var block) || block is null)
+        if (!executionContext.TryGetFunction(Name, out var function) || function is null)
             throw new InvalidOperationException($"Function '@{Name}' has not been assigned.");
 
-        return await block.EvaluateAsync(executor, executionContext, expectedInputType, cancellationToken)
+        return await function.Block.EvaluateAsync(executor, executionContext, expectedInputType, cancellationToken)
             .ConfigureAwait(false);
     }
 }

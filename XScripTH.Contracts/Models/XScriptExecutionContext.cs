@@ -8,7 +8,7 @@ public class XScriptExecutionContext : IExecutionContext
 {
     private readonly XScriptExecutionContext? _parent;
     private readonly Dictionary<string, object?> _variables = new(StringComparer.Ordinal);
-    private readonly Dictionary<string, CommandBlockArgument> _functions = new(StringComparer.Ordinal);
+    private readonly Dictionary<string, CommandFunctionDefinition> _functions = new(StringComparer.Ordinal);
 
     public ICommandExecutor Executor { get; }
 
@@ -46,28 +46,28 @@ public class XScriptExecutionContext : IExecutionContext
         _variables[normalized] = value;
     }
 
-    public bool TryGetFunction(string name, out CommandBlockArgument? block)
+    public bool TryGetFunction(string name, out CommandFunctionDefinition? function)
     {
         var normalized = NormalizeFunction(name);
-        if (_functions.TryGetValue(normalized, out block))
+        if (_functions.TryGetValue(normalized, out function))
         {
             return true;
         }
 
         if (_parent != null)
         {
-            return _parent.TryGetFunction(normalized, out block);
+            return _parent.TryGetFunction(normalized, out function);
         }
 
-        block = null;
+        function = null;
         return false;
     }
 
-    public void SetFunction(string name, CommandBlockArgument block)
+    public void SetFunction(string name, CommandFunctionDefinition function)
     {
-        ArgumentNullException.ThrowIfNull(block);
+        ArgumentNullException.ThrowIfNull(function);
         var normalized = NormalizeFunction(name);
-        _functions[normalized] = block;
+        _functions[normalized] = function;
     }
 
     public IExecutionContext CreateChildScope()
