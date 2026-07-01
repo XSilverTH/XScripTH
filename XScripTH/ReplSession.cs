@@ -47,7 +47,7 @@ internal sealed class ReplSession(CliRuntime runtime, TextReader input, TextWrit
             if (trimmed.StartsWith(":check ", StringComparison.Ordinal))
             {
                 var source = trimmed[7..].TrimStart();
-                var checkCode = await runtime.CompileOnlyAsync(compiler, source, compilationContext, "<repl>", cancellationToken)
+                var checkCode = await runtime.CompileOnlyAsync(compiler, source, new CompilationContext(), "<repl>", cancellationToken)
                     .ConfigureAwait(false);
                 if (checkCode == CliExitCode.Success)
                     output.WriteLine("OK");

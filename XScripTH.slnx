@@ -5,5 +5,6 @@
     <Project Path="XScripTH.Engine.Tests/XScripTH.Engine.Tests.csproj"/>
     <Project Path="XScripTH.Language/XScripTH.Language.csproj"/>
     <Project Path="XScripTH.Language.Tests/XScripTH.Language.Tests.csproj"/>
+    <Project Path="XScripTH.Cli.Tests/XScripTH.Cli.Tests.csproj"/>
     <Project Path="XScripTH/XScripTH.csproj"/>
 </Solution>
