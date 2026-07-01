@@ -69,6 +69,12 @@ public sealed class XScriptParser
         private static readonly Parser<char, string> FunctionRefName =
             Try(Char('@')).Then(IdentifierStr).Before(SkipWs);
 
+        private static readonly Parser<char, string> FunctionCallName =
+            FunctionRefName.Map(name => "@" + name);
+
+        private static readonly Parser<char, string> CommandName =
+            Try(FunctionCallName).Or(Identifier);
+
         // String
         private static readonly Parser<char, char> StringEscape =
             Char('\\').Then(
@@ -229,7 +235,7 @@ public sealed class XScriptParser
                 .Or(nestedCommand);
 
             TopCommand = Map((name, args, term) => new XScriptCommandAst(name, args.ToList(), term),
-                Identifier,
+                CommandName,
                 argumentsParser,
                 Terminator
             );
