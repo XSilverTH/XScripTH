@@ -136,6 +136,24 @@ print @say_hello;
 
 ```
 
+Direct calls pass positional parameters to a declared function. Parameter declarations are prefix commands inside the function block, and each declaration creates a local variable for the rest of that block.
+
+Supported parameter type aliases are `object`, `string`, `char`, `bool`, `byte`, `sbyte`, `short`, `ushort`, `int`, `uint`, `long`, `ulong`, `float`, `double`, and `decimal`.
+
+```xscript
+func "greet_user", {
+    param $name, "string";
+    param $age, "int";
+    print $name;
+};
+
+// Await the function call.
+@greet_user "Alice", 25;
+
+// Fire and forget.
+@greet_user "Bob", 30;;
+```
+
 ### 7. Control Flow
 
 Standard control flow is implemented as built-in commands that accept blocks as inputs.

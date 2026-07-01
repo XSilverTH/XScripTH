@@ -52,7 +52,15 @@ var tests = new (string Name, Func<Task> Run)[]
     ("block output mismatch fails compile", BlockOutputMismatchFailsCompile),
     ("forward function reference fails compile", ForwardFunctionReferenceFailsCompile),
     ("block variable scope shadows without leaking", BlockVariableScopeShadowsWithoutLeaking),
-    ("block variable scope does not leak declarations", BlockVariableScopeDoesNotLeakDeclarations)
+    ("block variable scope does not leak declarations", BlockVariableScopeDoesNotLeakDeclarations),
+    ("parses direct function call commands", ParsesDirectFunctionCallCommands),
+    ("function parameters resolve inside function body", FunctionParametersResolveInsideFunctionBody),
+    ("function call argument type mismatch fails compile", FunctionCallArgumentTypeMismatchFailsCompile),
+    ("function call missing argument fails compile", FunctionCallMissingArgumentFailsCompile),
+    ("param outside func block fails compile", ParamOutsideFuncBlockFailsCompile),
+    ("late param in func block fails compile", LateParamInFuncBlockFailsCompile),
+    ("parameterized function reference fails compile", ParameterizedFunctionReferenceFailsCompile),
+    ("function call double semicolon runs fire and forget", FunctionCallDoubleSemicolonRunsFireAndForget)
 };
 
 foreach (var test in tests)
@@ -507,6 +515,155 @@ static async Task BlockVariableScopeDoesNotLeakDeclarations()
     });
 
     AssertEqual("message", exception.VariableName);
+}
+
+static Task ParsesDirectFunctionCallCommands()
+{
+    var program1 = XScriptParser.Parse("@greet_user \"Alice\", 25;");
+    AssertEqual(1, program1.Commands.Count);
+    var command1 = program1.Commands[0];
+    AssertEqual("@greet_user", command1.Name);
+    AssertEqual(2, command1.Arguments.Count);
+    AssertEqual("Alice", ((XScriptLiteralArgumentAst)command1.Arguments[0]).Value);
+    AssertEqual(25, ((XScriptLiteralArgumentAst)command1.Arguments[1]).Value);
+    AssertEqual(XScriptCommandTerminator.Await, command1.Terminator);
+
+    var program2 = XScriptParser.Parse("@greet_user \"Alice\", 25;;");
+    AssertEqual(1, program2.Commands.Count);
+    var command2 = program2.Commands[0];
+    AssertEqual("@greet_user", command2.Name);
+    AssertEqual(2, command2.Arguments.Count);
+    AssertEqual("Alice", ((XScriptLiteralArgumentAst)command2.Arguments[0]).Value);
+    AssertEqual(25, ((XScriptLiteralArgumentAst)command2.Arguments[1]).Value);
+    AssertEqual(XScriptCommandTerminator.FireAndForget, command2.Terminator);
+
+    return Task.CompletedTask;
+}
+
+static async Task FunctionParametersResolveInsideFunctionBody()
+{
+    CommandCounts.Reset();
+    var engine = new XScripTHEngine();
+    var compiler = CreateControlFlowCompiler(engine);
+    var invocations = await compiler.CompileAsync("func \"name_length\", { param $name, \"string\"; length $name; }; @name_length \"Alice\";");
+
+    var outputs = await engine.ExecuteAllAsync(invocations);
+
+    AssertEqual(2, outputs.Count);
+    AssertEqual(CommandStatus.Ok, outputs[0].Status);
+    AssertEqual(CommandStatus.Ok, outputs[1].Status);
+    AssertEqual(5, (int)outputs[1].Values![0]!);
+    AssertEqual(1, CommandCounts.LengthCount);
+}
+
+static async Task FunctionCallArgumentTypeMismatchFailsCompile()
+{
+    var engine = new XScripTHEngine();
+    var compiler = CreateControlFlowCompiler(engine);
+
+    var exception = await AssertThrowsAsync<CommandTypeCheckException>(async () =>
+    {
+        await compiler.CompileAsync("func \"name_length\", { param $name, \"string\"; length $name; }; @name_length 25;");
+    });
+
+    AssertEqual(1, exception.Errors.Count);
+    var error = exception.Errors[0];
+    AssertPath([0], error.Path);
+    AssertEqual(typeof(string), error.ExpectedType);
+    AssertEqual(typeof(int), error.ActualType);
+}
+
+static async Task FunctionCallMissingArgumentFailsCompile()
+{
+    var engine = new XScripTHEngine();
+    var compiler = CreateControlFlowCompiler(engine);
+
+    var exception = await AssertThrowsAsync<CommandTypeCheckException>(async () =>
+    {
+        await compiler.CompileAsync("func \"name_length\", { param $name, \"string\"; length $name; }; @name_length;");
+    });
+
+    AssertEqual(1, exception.Errors.Count);
+    var error = exception.Errors[0];
+    AssertPath([0], error.Path);
+    AssertEqual(typeof(string), error.ExpectedType);
+    AssertEqual(null, error.ActualType);
+    if (!error.Message.Contains("missing", StringComparison.OrdinalIgnoreCase))
+    {
+        throw new InvalidOperationException($"Expected error message to contain 'missing', but was: '{error.Message}'");
+    }
+}
+
+static async Task ParamOutsideFuncBlockFailsCompile()
+{
+    var engine = new XScripTHEngine();
+    var compiler = CreateControlFlowCompiler(engine);
+
+    var exception = await AssertThrowsAsync<InvalidOperationException>(async () =>
+    {
+        await compiler.CompileAsync("if true, { param $name, \"string\"; };");
+    });
+
+    if (!exception.Message.Contains("only allowed in a func block", StringComparison.OrdinalIgnoreCase))
+    {
+        throw new InvalidOperationException($"Expected message containing 'only allowed in a func block', but got: '{exception.Message}'");
+    }
+}
+
+static async Task LateParamInFuncBlockFailsCompile()
+{
+    var engine = new XScripTHEngine();
+    var compiler = CreateControlFlowCompiler(engine);
+
+    var exception = await AssertThrowsAsync<InvalidOperationException>(async () =>
+    {
+        await compiler.CompileAsync("func \"bad\", { mark; param $name, \"string\"; };");
+    });
+
+    if (!exception.Message.Contains("before executable commands", StringComparison.OrdinalIgnoreCase))
+    {
+        throw new InvalidOperationException($"Expected message containing 'before executable commands', but got: '{exception.Message}'");
+    }
+}
+
+static async Task ParameterizedFunctionReferenceFailsCompile()
+{
+    var engine = new XScripTHEngine();
+    var compiler = CreateControlFlowCompiler(engine);
+
+    var exception = await AssertThrowsAsync<InvalidOperationException>(async () =>
+    {
+        await compiler.CompileAsync("func \"needs_name\", { param $name, \"string\"; length $name; }; length @needs_name;");
+    });
+
+    if (!exception.Message.Contains("must be called directly", StringComparison.OrdinalIgnoreCase))
+    {
+        throw new InvalidOperationException($"Expected message containing 'must be called directly', but got: '{exception.Message}'");
+    }
+}
+
+static async Task FunctionCallDoubleSemicolonRunsFireAndForget()
+{
+    BlockingGate.Tcs = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
+    CommandCounts.Reset();
+
+    var engine = new XScripTHEngine();
+    var compiler = CreateControlFlowCompiler(engine);
+    var invocations = await compiler.CompileAsync("func \"delayed_mark\", { block; mark; }; @delayed_mark;; mark;");
+
+    var executeTask = engine.ExecuteAllAsync(invocations);
+
+    // Let the tasks advance to ensure execution scheduler picks up the invocations
+    await Task.Delay(100);
+
+    AssertEqual(1, CommandCounts.MarkCount);
+
+    BlockingGate.Tcs.SetResult(true);
+    await Task.Delay(100);
+
+    var outputs = await executeTask;
+    AssertEqual(3, outputs.Count);
+    AssertEqual(2, CommandCounts.MarkCount);
 }
 
 static XScriptCompiler CreateControlFlowCompiler(XScripTHEngine engine)
